@@ -72,13 +72,15 @@ const Dashboard: Component<{
 
   // Load on mount and whenever refreshKey changes (tab switch)
   createEffect(() => {
-    const _ = props.refreshKey; // track
+    const key = props.refreshKey;
+    console.log("[Dashboard] createEffect fired, refreshKey=", key);
     const d = db();
     if (d) loadDashboard(d);
   });
 
   const loadDashboard = async (d: NonNullable<ReturnType<typeof db>>) => {
     const stats = await getWeekStats(d);
+    console.log("[Dashboard] stats:", stats);
     setSessionCount(stats.sessionCount);
     setSetCount(stats.setCount);
 
