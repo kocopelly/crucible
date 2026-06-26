@@ -25,6 +25,7 @@ export interface Session {
   id: string;
   date: string;
   started_at: string | null;
+  finished_at: string | null;
   notes: string | null;
 }
 

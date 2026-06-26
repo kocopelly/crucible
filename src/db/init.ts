@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY,
   date TEXT NOT NULL,
   started_at TEXT,
+  finished_at TEXT,
   notes TEXT
 );
 
@@ -63,35 +64,29 @@ export async function getDB() {
   const sqlite3 = Factory(module);
 
   let db: number;
-  let persistent = false;
 
   try {
-    // Try IndexedDB-backed VFS for persistence
-    const vfs = await IDBBatchAtomicVFS.create("crucible-idb", module);
+    // IDBBatchAtomicVFS — persists to IndexedDB
+    // Note: journal "file not found" errors in console are expected and harmless.
+    // SQLite probes for the journal; CANTOPEN tells it no hot journal exists.
+    const vfs = new IDBBatchAtomicVFS("crucible-idb");
     sqlite3.vfs_register(vfs, true);
     db = await sqlite3.open_v2("crucible.db");
-    persistent = true;
-    console.log("[Crucible DB] Using IndexedDB persistence");
+    console.log("[Crucible DB] Using IndexedDB persistence (IDBBatchAtomicVFS)");
   } catch (e) {
-    console.warn("[Crucible DB] IndexedDB VFS failed, falling back to in-memory:", e);
+    console.warn("[Crucible DB] IDB VFS failed, falling back to in-memory:", e);
     try {
       const vfs = new MemoryVFS();
       sqlite3.vfs_register(vfs, true);
       db = await sqlite3.open_v2("crucible.db");
     } catch {
-      // Last resort: default VFS
       db = await sqlite3.open_v2("crucible.db");
     }
     console.warn("[Crucible DB] Using in-memory database (data will not persist)");
   }
 
-  // Run schema
-  const statements = SCHEMA.split(";")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  for (const stmt of statements) {
-    await sqlite3.exec(db, stmt + ";");
-  }
+  // Execute full schema in one call — avoid multiple sequential transactions
+  await sqlite3.exec(db, SCHEMA);
 
   _db = { sqlite3, db };
 
