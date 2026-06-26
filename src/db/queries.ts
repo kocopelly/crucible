@@ -1,7 +1,15 @@
 import type { MuscleGroup, Exercise, ExerciseMuscle, Session, Set } from "../lib/types";
+import { saveDB } from "./init";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type DB = { sqlite3: any; db: number };
+
+// Debounced save — batches rapid writes into one save
+let _saveTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleSave() {
+  if (_saveTimer) clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(() => { saveDB(); }, 300);
+}
 
 /** Run a SQL query and return rows as typed objects */
 async function query<T = Record<string, unknown>>(
@@ -55,7 +63,7 @@ async function query<T = Record<string, unknown>>(
   return results;
 }
 
-/** Run a SQL statement (no results needed) */
+/** Run a SQL statement (no results needed). Auto-saves to localStorage. */
 async function run(db: DB, sql: string, params?: unknown[]): Promise<void> {
   if (params && params.length > 0) {
     const str = db.sqlite3.str_new(db.db, sql);
@@ -84,6 +92,7 @@ async function run(db: DB, sql: string, params?: unknown[]): Promise<void> {
   } else {
     await db.sqlite3.exec(db.db, sql);
   }
+  scheduleSave();
 }
 
 // ── Sessions ──────────────────────────────────────────────
