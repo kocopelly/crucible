@@ -86,7 +86,10 @@ async function _initDB(): Promise<DBInstance> {
   const module = await SQLiteESMFactory();
   const sqlite3 = Factory(module);
 
-  const vfs = new MemoryVFS();
+  // MemoryVFS is a wa-sqlite example class whose xRead signature doesn't match
+  // the published SQLiteVFS type (known upstream typing gap). Cast through.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const vfs = new MemoryVFS() as any;
   sqlite3.vfs_register(vfs, true);
   const db = await sqlite3.open_v2("crucible.db");
 

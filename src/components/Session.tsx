@@ -290,7 +290,7 @@ const Session: Component = () => {
                     <span class="flex-1">Weight</span>
                     <span class="shrink-0">&nbsp;</span>
                     <span class="flex-1">Reps</span>
-                    <span class="w-8 shrink-0"></span>
+                    <span class="w-8 shrink-0" />
                   </div>
 
                   <For each={block.sets}>

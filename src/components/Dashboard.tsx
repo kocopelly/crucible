@@ -72,7 +72,7 @@ const Dashboard: Component<{
 
   // Load on mount and whenever refreshKey changes (tab switch)
   createEffect(() => {
-    const _key = props.refreshKey; // track changes
+    void props.refreshKey; // track changes on tab switch
     getDB().then((d) => loadDashboard(d));
   });
 

@@ -1,7 +1,9 @@
 import { createSignal, onMount, For, Show, type Component } from "solid-js";
-import { useDb } from "../db/context";
+import { getDB } from "../db/init";
 import { getExercise, getExerciseHistory, getExerciseMuscles } from "../db/queries";
 import type { Exercise, Set, Session } from "../lib/types";
+
+type DB = Awaited<ReturnType<typeof getDB>>;
 
 interface SessionHistory {
   session: Session;
@@ -19,18 +21,15 @@ const ExerciseDetail: Component<{
   exerciseId: string;
   onBack: () => void;
 }> = (props) => {
-  const { db } = useDb();
   const [exercise, setExercise] = createSignal<Exercise | null>(null);
   const [history, setHistory] = createSignal<SessionHistory[]>([]);
   const [muscles, setMuscles] = createSignal<{ id: string; weight: number }[]>([]);
 
   onMount(() => {
-    const d = db();
-    if (!d) return;
-    loadExercise(d);
+    getDB().then((d) => loadExercise(d));
   });
 
-  const loadExercise = async (d: NonNullable<ReturnType<typeof db>>) => {
+  const loadExercise = async (d: DB) => {
     const ex = await getExercise(d, props.exerciseId);
     setExercise(ex);
 

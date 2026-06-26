@@ -12,17 +12,15 @@ const Exercises: Component<{
   const [exercises, setExercises] = createSignal<Exercise[]>([]);
   const [searchQuery, setSearchQuery] = createSignal("");
   const [showPicker, setShowPicker] = createSignal(false);
-  const [loaded, setLoaded] = createSignal(false);
 
   const loadExercises = async (d: DB, q: string) => {
     const results = q ? await searchExercises(d, q) : await getAllExercises(d);
     setExercises(results);
-    setLoaded(true);
   };
 
   // Reload when search query or refreshKey changes
   createEffect(() => {
-    const _ = props.refreshKey; // track
+    void props.refreshKey; // track changes on tab switch
     const q = searchQuery();
     getDB().then((d) => loadExercises(d, q));
   });

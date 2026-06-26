@@ -1,3 +1,4 @@
+import { For } from "solid-js";
 import type { Component, JSX } from "solid-js";
 import type { Tab } from "../App";
 
@@ -43,7 +44,7 @@ const Layout: Component<LayoutProps> = (props) => {
       <main class="flex-1 overflow-y-auto">{props.children}</main>
 
       <nav class="flex border-t border-gray-800 bg-[#111] shrink-0">
-        {tabs.map((tab) => (
+        <For each={tabs}>{(tab) => (
           <button
             class={`flex-1 flex flex-col items-center gap-1 py-3 text-xs transition-colors ${
               props.activeTab === tab.id
@@ -55,7 +56,7 @@ const Layout: Component<LayoutProps> = (props) => {
             {tab.icon}
             <span>{tab.label}</span>
           </button>
-        ))}
+        )}</For>
       </nav>
     </div>
   );

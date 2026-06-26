@@ -1,5 +1,5 @@
 import { createSignal, onMount, For, Show, type Component } from "solid-js";
-import { useDb } from "../db/context";
+import { getDB } from "../db/init";
 import {
   getWeeklyMuscleVolume,
   getExercisesForMuscle,
@@ -7,32 +7,29 @@ import {
 } from "../db/queries";
 import type { Exercise, MuscleGroup } from "../lib/types";
 
+type DB = Awaited<ReturnType<typeof getDB>>;
+
 const MuscleDetail: Component<{
   muscleId: string;
   onBack: () => void;
   onExerciseClick: (id: string) => void;
 }> = (props) => {
-  const { db } = useDb();
   const [muscle, setMuscle] = createSignal<MuscleGroup | null>(null);
-  const [children, setChildren] = createSignal<MuscleGroup[]>([]);
   const [weeklyVolume, setWeeklyVolume] = createSignal<{ week: string; sets: number }[]>([]);
   const [childVolume, setChildVolume] = createSignal<{ muscleId: string; muscle: string; sets: number }[]>([]);
   const [exercises, setExercises] = createSignal<{ exercise: Exercise; weight: number }[]>([]);
 
   onMount(() => {
-    const d = db();
-    if (!d) return;
-    loadMuscle(d);
+    getDB().then((d) => loadMuscle(d));
   });
 
-  const loadMuscle = async (d: NonNullable<ReturnType<typeof db>>) => {
+  const loadMuscle = async (d: DB) => {
     const allGroups = await getAllMuscleGroups(d);
     const m = allGroups.find((g) => g.id === props.muscleId);
     setMuscle(m ?? null);
 
     // Find child groups
     const kids = allGroups.filter((g) => g.parent === props.muscleId);
-    setChildren(kids);
 
     // Weekly volume for this muscle (8 weeks)
     const volume = await getWeeklyMuscleVolume(d, 8);
