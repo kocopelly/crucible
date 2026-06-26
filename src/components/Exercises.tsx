@@ -1,10 +1,12 @@
 import { createSignal, createEffect, For, Show, type Component } from "solid-js";
 import { useDb } from "../db/context";
-import { getAllExercises, searchExercises, getExerciseMuscles, getAllMuscleGroups } from "../db/queries";
-import type { Exercise, MuscleGroup } from "../lib/types";
+import { getAllExercises, searchExercises } from "../db/queries";
+import type { Exercise } from "../lib/types";
 import ExercisePicker from "./ExercisePicker";
 
-const Exercises: Component = () => {
+const Exercises: Component<{
+  onExerciseClick?: (id: string) => void;
+}> = (props) => {
   const { db } = useDb();
   const [exercises, setExercises] = createSignal<Exercise[]>([]);
   const [searchQuery, setSearchQuery] = createSignal("");
@@ -25,13 +27,13 @@ const Exercises: Component = () => {
     loadExercises();
   });
 
-  const handleCreated = (exercise: Exercise) => {
+  const handleCreated = () => {
     setShowPicker(false);
     loadExercises();
   };
 
   return (
-    <div class="p-4">
+    <div class="px-3 py-4">
       <div class="flex items-center justify-between mb-4">
         <h1 class="text-2xl font-bold">Exercises</h1>
         <button
@@ -53,7 +55,7 @@ const Exercises: Component = () => {
       <Show
         when={exercises().length > 0}
         fallback={
-          <div class="rounded-xl bg-gray-800/50 border border-gray-700/50 p-8 text-center">
+          <div class="rounded-xl bg-gray-800/50 border border-gray-700/50 p-6 text-center">
             <p class="text-gray-500 text-sm">
               {searchQuery() ? "No exercises match your search" : "No exercises yet. Create one!"}
             </p>
@@ -63,12 +65,15 @@ const Exercises: Component = () => {
         <div class="space-y-2">
           <For each={exercises()}>
             {(exercise) => (
-              <div class="rounded-lg bg-gray-800/50 border border-gray-700/50 p-3">
+              <button
+                class="w-full text-left rounded-lg bg-gray-800/50 border border-gray-700/50 p-3 hover:border-emerald-600/50 transition-colors"
+                onClick={() => props.onExerciseClick?.(exercise.id)}
+              >
                 <p class="font-medium text-gray-100">{exercise.display_name}</p>
                 <p class="text-xs text-gray-500 mt-1">
                   {exercise.position} · {exercise.equipment} · {exercise.movement}
                 </p>
-              </div>
+              </button>
             )}
           </For>
         </div>

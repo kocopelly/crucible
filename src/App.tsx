@@ -4,21 +4,46 @@ import Layout from "./components/Layout";
 import Dashboard from "./components/Dashboard";
 import Session from "./components/Session";
 import Exercises from "./components/Exercises";
+import ExerciseDetail from "./components/ExerciseDetail";
+import MuscleDetail from "./components/MuscleDetail";
 
 export type Tab = "dashboard" | "log" | "exercises";
+
+export interface Navigation {
+  exerciseDetail?: string; // exercise ID
+  muscleDetail?: string;   // muscle group ID
+}
 
 const AppContent: Component = () => {
   const { ready, error } = useDb();
   const [activeTab, setActiveTab] = createSignal<Tab>("dashboard");
+  const [nav, setNav] = createSignal<Navigation>({});
 
-  const renderTab = () => {
+  const navigate = (n: Navigation) => setNav(n);
+  const clearNav = () => setNav({});
+
+  const handleTabChange = (tab: Tab) => {
+    clearNav();
+    setActiveTab(tab);
+  };
+
+  const renderContent = () => {
+    const n = nav();
+
+    if (n.exerciseDetail) {
+      return <ExerciseDetail exerciseId={n.exerciseDetail} onBack={clearNav} />;
+    }
+    if (n.muscleDetail) {
+      return <MuscleDetail muscleId={n.muscleDetail} onBack={clearNav} onExerciseClick={(id) => navigate({ exerciseDetail: id })} />;
+    }
+
     switch (activeTab()) {
       case "dashboard":
-        return <Dashboard />;
+        return <Dashboard onMuscleClick={(id) => navigate({ muscleDetail: id })} onExerciseClick={(id) => navigate({ exerciseDetail: id })} />;
       case "log":
         return <Session />;
       case "exercises":
-        return <Exercises />;
+        return <Exercises onExerciseClick={(id) => navigate({ exerciseDetail: id })} />;
     }
   };
 
@@ -33,8 +58,8 @@ const AppContent: Component = () => {
         </div>
       }
     >
-      <Layout activeTab={activeTab()} onTabChange={setActiveTab}>
-        {renderTab()}
+      <Layout activeTab={activeTab()} onTabChange={handleTabChange}>
+        {renderContent()}
       </Layout>
     </Show>
   );
