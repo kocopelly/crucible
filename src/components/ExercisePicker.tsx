@@ -1,4 +1,4 @@
-import { createSignal, createEffect, For, Show, type Component } from "solid-js";
+import { createSignal, createEffect, createResource, For, Show, type Component } from "solid-js";
 import { useDb } from "../db/context";
 import {
   searchExercises,
@@ -26,7 +26,11 @@ const ExercisePicker: Component<ExercisePickerProps> = (props) => {
   const [mode, setMode] = createSignal<"search" | "create" | "muscles">("search");
   const [searchQuery, setSearchQuery] = createSignal("");
   const [results, setResults] = createSignal<Exercise[]>([]);
-  const [muscleGroups, setMuscleGroups] = createSignal<MuscleGroup[]>([]);
+  const [muscleGroupsData] = createResource(db, async (d) => {
+    const groups = await getAllMuscleGroups(d);
+    return groups;
+  });
+  const muscleGroups = () => muscleGroupsData() ?? [];
 
   // Create mode state
   const [position, setPosition] = createSignal(POSITIONS[0]);
@@ -40,17 +44,13 @@ const ExercisePicker: Component<ExercisePickerProps> = (props) => {
   const [secondaryMuscles, setSecondaryMuscles] = createSignal<string[]>([]);
   const [error, setError] = createSignal("");
 
-  // Load muscle groups on mount
+  // Set default target muscle when groups load
   createEffect(() => {
-    const d = db();
-    if (!d) return;
-    getAllMuscleGroups(d).then((groups) => {
-      setMuscleGroups(groups);
-      if (groups.length > 0 && !targetMuscle()) {
-        const leaves = groups.filter((g) => !groups.some((c) => c.parent === g.id));
-        setTargetMuscle(leaves.length > 0 ? leaves[0].id : groups[0].id);
-      }
-    });
+    const groups = muscleGroups();
+    if (groups.length > 0 && !targetMuscle()) {
+      const leaves = groups.filter((g) => !groups.some((c) => c.parent === g.id));
+      setTargetMuscle(leaves.length > 0 ? leaves[0].id : groups[0].id);
+    }
   });
 
   // Search as user types
