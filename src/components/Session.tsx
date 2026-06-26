@@ -1,11 +1,15 @@
-import { createSignal, For, Show, type Component } from "solid-js";
+import { createSignal, createEffect, For, Show, type Component } from "solid-js";
 import { useDb } from "../db/context";
 import {
   createSession,
+  getActiveSession,
+  finishSession,
   addSet,
   updateSet,
   deleteSet,
+  getSetsForSession,
   getLastSetsForExercise,
+  getExercise,
 } from "../db/queries";
 import type { Exercise, Session as SessionType, Set } from "../lib/types";
 import ExercisePicker from "./ExercisePicker";
@@ -22,14 +26,10 @@ const SetRow: Component<{
   onUpdate: (field: "weight" | "reps", value: number) => void;
   onDelete: () => void;
 }> = (props) => {
-  let weightRef!: HTMLInputElement;
-  let repsRef!: HTMLInputElement;
-
   return (
     <div class="flex items-center gap-1">
       <span class="text-gray-500 text-xs w-5 text-center shrink-0">{props.index + 1}</span>
       <input
-        ref={weightRef}
         type="number"
         inputmode="decimal"
         value={props.set.weight || ""}
@@ -42,7 +42,6 @@ const SetRow: Component<{
       />
       <span class="text-gray-500 text-xs shrink-0">×</span>
       <input
-        ref={repsRef}
         type="number"
         inputmode="numeric"
         value={props.set.reps || ""}
@@ -71,6 +70,52 @@ const Session: Component = () => {
   const [blocks, setBlocks] = createSignal<ExerciseBlock[]>([]);
   const [showPicker, setShowPicker] = createSignal(false);
   const [finished, setFinished] = createSignal(false);
+  const [loading, setLoading] = createSignal(true);
+
+  // On mount: check for an active (unfinished) session and resume it
+  createEffect(() => {
+    const d = db();
+    if (!d) return;
+    resumeActiveSession(d);
+  });
+
+  const resumeActiveSession = async (d: NonNullable<ReturnType<typeof db>>) => {
+    setLoading(true);
+    try {
+      const active = await getActiveSession(d);
+      if (active) {
+        setSession(active);
+        setFinished(false);
+        await loadSessionBlocks(d, active.id);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadSessionBlocks = async (d: NonNullable<ReturnType<typeof db>>, sessionId: string) => {
+    const sets = await getSetsForSession(d, sessionId);
+    // Group sets by exercise
+    const exerciseMap = new Map<string, Set[]>();
+    const exerciseOrder: string[] = [];
+    for (const s of sets) {
+      if (!exerciseMap.has(s.exercise_id)) {
+        exerciseMap.set(s.exercise_id, []);
+        exerciseOrder.push(s.exercise_id);
+      }
+      exerciseMap.get(s.exercise_id)!.push(s);
+    }
+
+    const newBlocks: ExerciseBlock[] = [];
+    for (const exId of exerciseOrder) {
+      const exercise = await getExercise(d, exId);
+      if (exercise) {
+        const lastTime = await getLastSetsForExercise(d, exercise.id);
+        newBlocks.push({ exercise, sets: exerciseMap.get(exId)!, lastTime });
+      }
+    }
+    setBlocks(newBlocks);
+  };
 
   const startWorkout = async () => {
     const d = db();
@@ -90,7 +135,6 @@ const Session: Component = () => {
     const lastTime = await getLastSetsForExercise(d, exercise.id);
     const sessionId = session()!.id;
 
-    // Pre-fill from last session or start with one empty set
     const prefillSets: Set[] = [];
     if (lastTime && lastTime.sets.length > 0) {
       for (const ls of lastTime.sets) {
@@ -151,7 +195,6 @@ const Session: Component = () => {
     const set = blocks()[blockIndex].sets[setIndex];
     await updateSet(d, set.id, { [field]: value });
 
-    // Update signal without causing re-render of the input (SetRow is a separate component)
     setBlocks((prev) => {
       const updated = [...prev];
       const updatedSets = [...updated[blockIndex].sets];
@@ -176,7 +219,12 @@ const Session: Component = () => {
     });
   };
 
-  const finishWorkout = () => {
+  const handleFinishWorkout = async () => {
+    const d = db();
+    const s = session();
+    if (!d || !s) return;
+
+    await finishSession(d, s.id);
     setFinished(true);
   };
 
@@ -190,8 +238,13 @@ const Session: Component = () => {
     <div class="px-3 py-4">
       <h1 class="text-2xl font-bold mb-4">Log Workout</h1>
 
+      {/* Loading */}
+      <Show when={loading()}>
+        <p class="text-gray-500 text-sm text-center py-8">Loading...</p>
+      </Show>
+
       {/* No active session */}
-      <Show when={!session()}>
+      <Show when={!loading() && !session()}>
         <button
           class="w-full rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-4 text-lg transition-colors min-h-[56px]"
           onClick={startWorkout}
@@ -221,9 +274,8 @@ const Session: Component = () => {
       </Show>
 
       {/* Active session */}
-      <Show when={session() && !finished()}>
+      <Show when={!loading() && session() && !finished()}>
         <div class="space-y-3">
-          {/* Exercise blocks */}
           <For each={blocks()}>
             {(block, blockIndex) => (
               <div class="rounded-xl bg-gray-800/50 border border-gray-700/50 overflow-hidden">
@@ -268,7 +320,6 @@ const Session: Component = () => {
             )}
           </For>
 
-          {/* Actions */}
           <button
             class="w-full py-3 rounded-xl border-2 border-dashed border-gray-600 text-gray-400 hover:border-emerald-600 hover:text-emerald-400 transition-colors min-h-[48px]"
             onClick={() => setShowPicker(true)}
@@ -279,7 +330,7 @@ const Session: Component = () => {
           <Show when={blocks().length > 0}>
             <button
               class="w-full py-3 rounded-xl bg-emerald-600 text-white font-medium hover:bg-emerald-500 transition-colors min-h-[48px]"
-              onClick={finishWorkout}
+              onClick={handleFinishWorkout}
             >
               Finish Workout
             </button>
@@ -287,7 +338,6 @@ const Session: Component = () => {
         </div>
       </Show>
 
-      {/* Exercise Picker Modal */}
       <Show when={showPicker()}>
         <ExercisePicker
           onSelect={handleExerciseSelected}

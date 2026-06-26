@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY,
   date TEXT NOT NULL,
   started_at TEXT,
+  finished_at TEXT,
   notes TEXT
 );
 

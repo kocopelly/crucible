@@ -92,11 +92,24 @@ export async function createSession(db: DB, date: string): Promise<Session> {
   const id = crypto.randomUUID();
   const started_at = new Date().toISOString();
   await run(db, `INSERT INTO sessions (id, date, started_at) VALUES (?, ?, ?)`, [id, date, started_at]);
-  return { id, date, started_at, notes: null };
+  return { id, date, started_at, finished_at: null, notes: null };
+}
+
+export async function getActiveSession(db: DB): Promise<Session | null> {
+  const rows = await query<Session>(
+    db,
+    `SELECT * FROM sessions WHERE finished_at IS NULL ORDER BY started_at DESC LIMIT 1`
+  );
+  return rows[0] ?? null;
+}
+
+export async function finishSession(db: DB, id: string): Promise<void> {
+  const finished_at = new Date().toISOString();
+  await run(db, `UPDATE sessions SET finished_at = ? WHERE id = ?`, [finished_at, id]);
 }
 
 export async function getRecentSessions(db: DB, limit: number = 10): Promise<Session[]> {
-  return query<Session>(db, `SELECT * FROM sessions ORDER BY date DESC LIMIT ${limit}`);
+  return query<Session>(db, `SELECT * FROM sessions WHERE finished_at IS NOT NULL ORDER BY date DESC LIMIT ${limit}`);
 }
 
 export async function getSession(db: DB, id: string): Promise<Session | null> {
@@ -243,12 +256,12 @@ export async function getWeekStats(db: DB): Promise<{ sessionCount: number; setC
 
   const sessionRows = await query<{ cnt: number }>(
     db,
-    `SELECT COUNT(*) as cnt FROM sessions WHERE date >= ?`,
+    `SELECT COUNT(*) as cnt FROM sessions WHERE date >= ? AND finished_at IS NOT NULL`,
     [mondayStr]
   );
   const setRows = await query<{ cnt: number }>(
     db,
-    `SELECT COUNT(*) as cnt FROM sets WHERE session_id IN (SELECT id FROM sessions WHERE date >= ?)`,
+    `SELECT COUNT(*) as cnt FROM sets WHERE session_id IN (SELECT id FROM sessions WHERE date >= ? AND finished_at IS NOT NULL)`,
     [mondayStr]
   );
   return {
