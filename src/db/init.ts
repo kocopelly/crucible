@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS sets (
 );
 `;
 
-const STORAGE_KEY = "crucible-db";
+const STORAGE_KEY = "crucible-db-sql";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type DBInstance = { sqlite3: any; db: number };
@@ -75,66 +75,39 @@ async function _initDB(): Promise<DBInstance> {
   sqlite3.vfs_register(vfs, true);
   const db = await sqlite3.open_v2("crucible.db");
 
-  // Try to restore from localStorage
-  const saved = localStorage.getItem(STORAGE_KEY);
-  if (saved) {
+  // Always run schema first (CREATE IF NOT EXISTS is safe)
+  await sqlite3.exec(db, SCHEMA);
+
+  // Try to restore data from localStorage
+  const sqlDump = localStorage.getItem(STORAGE_KEY);
+  if (sqlDump) {
     try {
-      const bytes = Uint8Array.from(atob(saved), c => c.charCodeAt(0));
-      // Import the database by writing to the VFS file
-      const importSQL = _buildImportSQL(bytes, sqlite3, db);
-      if (importSQL) {
-        // Can't directly restore bytes to MemoryVFS, so we use a fresh approach:
-        // Close and reopen with the data
-        await sqlite3.close(db);
-        
-        // Create a new DB and import via SQL dump stored separately
-        const db2 = await sqlite3.open_v2("crucible.db");
-        const sqlDump = localStorage.getItem(STORAGE_KEY + "-sql");
-        if (sqlDump) {
-          await sqlite3.exec(db2, sqlDump);
-          console.log("[Crucible DB] Restored from localStorage");
-          const instance: DBInstance = { sqlite3, db: db2 };
-          _db = instance;
-          return instance;
-        }
-        // Fallback: fresh DB
-        await sqlite3.exec(db2, SCHEMA);
-        const instance: DBInstance = { sqlite3, db: db2 };
-        await seedMuscleGroups(instance);
-        _db = instance;
-        return instance;
-      }
+      await sqlite3.exec(db, sqlDump);
+      console.log("[Crucible DB] Restored from localStorage");
     } catch (e) {
-      console.warn("[Crucible DB] Failed to restore from localStorage:", e);
+      console.warn("[Crucible DB] Restore failed, starting fresh:", e);
     }
+  } else {
+    console.log("[Crucible DB] Fresh database");
   }
 
-  // Fresh DB
-  await sqlite3.exec(db, SCHEMA);
-  console.log("[Crucible DB] Created fresh database");
-
   const instance: DBInstance = { sqlite3, db };
+
+  // Seed muscle groups (INSERT OR IGNORE — safe to run on restored DB)
   await seedMuscleGroups(instance);
+
   _db = instance;
   return instance;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function _buildImportSQL(_bytes: Uint8Array, _sqlite3: any, _db: number): boolean {
-  // MemoryVFS doesn't support direct byte import
-  // We use SQL dump approach instead
-  return false;
-}
-
-/** Save the database to localStorage as a SQL dump */
+/** Save all data to localStorage as SQL INSERT statements */
 export async function saveDB(): Promise<void> {
   if (!_db) return;
-  
+
   try {
-    // Generate a SQL dump of all data
     const tables = ["muscle_groups", "exercises", "exercise_muscles", "sessions", "sets"];
-    let sql = SCHEMA + "\n";
-    
+    const statements: string[] = [];
+
     for (const table of tables) {
       const rows: Record<string, unknown>[] = [];
       await _db.sqlite3.exec(
@@ -146,21 +119,22 @@ export async function saveDB(): Promise<void> {
           rows.push(obj);
         }
       );
-      
+
       for (const row of rows) {
         const cols = Object.keys(row);
-        const vals = cols.map(c => {
+        const vals = cols.map((c) => {
           const v = row[c];
           if (v === null || v === undefined) return "NULL";
           if (typeof v === "number") return String(v);
           return `'${String(v).replace(/'/g, "''")}'`;
         });
-        sql += `INSERT OR REPLACE INTO ${table} (${cols.join(",")}) VALUES (${vals.join(",")});\n`;
+        statements.push(
+          `INSERT OR REPLACE INTO ${table} (${cols.join(",")}) VALUES (${vals.join(",")});`
+        );
       }
     }
-    
-    localStorage.setItem(STORAGE_KEY + "-sql", sql);
-    console.log("[Crucible DB] Saved to localStorage");
+
+    localStorage.setItem(STORAGE_KEY, statements.join("\n"));
   } catch (e) {
     console.warn("[Crucible DB] Save failed:", e);
   }
