@@ -195,14 +195,25 @@ const ExercisePicker: Component<ExercisePickerProps> = (props) => {
                   class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-gray-100 min-h-[44px] focus:outline-none focus:border-emerald-600"
                   value={targetMuscle()}
                   onChange={(e) => setTargetMuscle(e.currentTarget.value)}
+                  ref={(el) => {
+                    createEffect(() => {
+                      const opts = flatMuscleOptions();
+                      el.innerHTML = "";
+                      for (const opt of opts) {
+                        const o = document.createElement("option");
+                        o.value = opt.id;
+                        o.textContent = opt.indent ? `  ${opt.name}` : opt.name;
+                        el.appendChild(o);
+                      }
+                      if (opts.length > 0 && !targetMuscle()) {
+                        setTargetMuscle(opts[0].id);
+                      }
+                      if (targetMuscle()) {
+                        el.value = targetMuscle();
+                      }
+                    });
+                  }}
                 >
-                  <For each={flatMuscleOptions()}>
-                    {(opt) => (
-                      <option value={opt.id}>
-                        {opt.indent ? `  ${opt.name}` : opt.name}
-                      </option>
-                    )}
-                  </For>
                 </select>
               </div>
 
