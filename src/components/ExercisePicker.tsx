@@ -38,6 +38,7 @@ const ExercisePicker: Component<ExercisePickerProps> = (props) => {
   // Muscle assignment state
   const [createdExercise, setCreatedExercise] = createSignal<Exercise | null>(null);
   const [secondaryMuscles, setSecondaryMuscles] = createSignal<string[]>([]);
+  const [error, setError] = createSignal("");
 
   // Load muscle groups on mount
   createEffect(async () => {
@@ -45,8 +46,10 @@ const ExercisePicker: Component<ExercisePickerProps> = (props) => {
     if (!d) return;
     const groups = await getAllMuscleGroups(d);
     setMuscleGroups(groups);
+    // Set default to first leaf muscle (not a parent category)
     if (groups.length > 0 && !targetMuscle()) {
-      setTargetMuscle(groups[0].id);
+      const leaves = groups.filter((g) => !groups.some((c) => c.parent === g.id));
+      setTargetMuscle(leaves.length > 0 ? leaves[0].id : groups[0].id);
     }
   });
 
@@ -78,7 +81,11 @@ const ExercisePicker: Component<ExercisePickerProps> = (props) => {
     const d = db();
     if (!d) return;
     const target = muscleGroups().find((m) => m.id === targetMuscle());
-    if (!target) return;
+    if (!target) {
+      setError("Please select a target muscle");
+      return;
+    }
+    setError("");
 
     const exercise = await createExercise(d, {
       position: position(),
@@ -87,6 +94,7 @@ const ExercisePicker: Component<ExercisePickerProps> = (props) => {
       angle: angle() || null,
       movement: movement(),
       variant: null,
+      display_name: generatedName(),
     });
 
     setCreatedExercise(exercise);
@@ -201,6 +209,10 @@ const ExercisePicker: Component<ExercisePickerProps> = (props) => {
                 <p class="text-xs text-gray-400 mb-1">Preview</p>
                 <p class="text-emerald-400 font-medium">{generatedName()}</p>
               </div>
+
+              <Show when={error()}>
+                <p class="text-red-400 text-sm">{error()}</p>
+              </Show>
 
               <div class="flex gap-3">
                 <button
