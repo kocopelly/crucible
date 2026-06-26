@@ -10,8 +10,8 @@ import MuscleDetail from "./components/MuscleDetail";
 export type Tab = "dashboard" | "log" | "exercises";
 
 export interface Navigation {
-  exerciseDetail?: string; // exercise ID
-  muscleDetail?: string;   // muscle group ID
+  exerciseDetail?: string;
+  muscleDetail?: string;
 }
 
 const AppContent: Component = () => {
@@ -27,24 +27,9 @@ const AppContent: Component = () => {
     setActiveTab(tab);
   };
 
-  const renderContent = () => {
+  const hasDetailView = () => {
     const n = nav();
-
-    if (n.exerciseDetail) {
-      return <ExerciseDetail exerciseId={n.exerciseDetail} onBack={clearNav} />;
-    }
-    if (n.muscleDetail) {
-      return <MuscleDetail muscleId={n.muscleDetail} onBack={clearNav} onExerciseClick={(id) => navigate({ exerciseDetail: id })} />;
-    }
-
-    switch (activeTab()) {
-      case "dashboard":
-        return <Dashboard onMuscleClick={(id) => navigate({ muscleDetail: id })} onExerciseClick={(id) => navigate({ exerciseDetail: id })} />;
-      case "log":
-        return <Session />;
-      case "exercises":
-        return <Exercises onExerciseClick={(id) => navigate({ exerciseDetail: id })} />;
-    }
+    return !!(n.exerciseDetail || n.muscleDetail);
   };
 
   return (
@@ -59,7 +44,33 @@ const AppContent: Component = () => {
       }
     >
       <Layout activeTab={activeTab()} onTabChange={handleTabChange}>
-        {renderContent()}
+        {/* Detail views overlay everything */}
+        <Show when={nav().exerciseDetail}>
+          {(id) => <ExerciseDetail exerciseId={id()} onBack={clearNav} />}
+        </Show>
+        <Show when={nav().muscleDetail}>
+          {(id) => (
+            <MuscleDetail
+              muscleId={id()}
+              onBack={clearNav}
+              onExerciseClick={(eid) => navigate({ exerciseDetail: eid })}
+            />
+          )}
+        </Show>
+
+        {/* Tabs persist — hidden via CSS, never unmounted */}
+        <div style={{ display: hasDetailView() || activeTab() !== "dashboard" ? "none" : undefined }}>
+          <Dashboard
+            onMuscleClick={(id) => navigate({ muscleDetail: id })}
+            onExerciseClick={(id) => navigate({ exerciseDetail: id })}
+          />
+        </div>
+        <div style={{ display: hasDetailView() || activeTab() !== "log" ? "none" : undefined }}>
+          <Session />
+        </div>
+        <div style={{ display: hasDetailView() || activeTab() !== "exercises" ? "none" : undefined }}>
+          <Exercises onExerciseClick={(id) => navigate({ exerciseDetail: id })} />
+        </div>
       </Layout>
     </Show>
   );
