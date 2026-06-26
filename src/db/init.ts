@@ -88,6 +88,13 @@ export async function getDB() {
   // Execute full schema in one call — avoid multiple sequential transactions
   await sqlite3.exec(db, SCHEMA);
 
+  // Migrations — add columns that may not exist in older DBs
+  try {
+    await sqlite3.exec(db, `ALTER TABLE sessions ADD COLUMN finished_at TEXT`);
+  } catch {
+    // Column already exists — expected
+  }
+
   _db = { sqlite3, db };
 
   // Seed data
