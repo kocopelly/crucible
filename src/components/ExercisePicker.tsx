@@ -41,25 +41,24 @@ const ExercisePicker: Component<ExercisePickerProps> = (props) => {
   const [error, setError] = createSignal("");
 
   // Load muscle groups on mount
-  createEffect(async () => {
+  createEffect(() => {
     const d = db();
     if (!d) return;
-    const groups = await getAllMuscleGroups(d);
-    setMuscleGroups(groups);
-    // Set default to first leaf muscle (not a parent category)
-    if (groups.length > 0 && !targetMuscle()) {
-      const leaves = groups.filter((g) => !groups.some((c) => c.parent === g.id));
-      setTargetMuscle(leaves.length > 0 ? leaves[0].id : groups[0].id);
-    }
+    getAllMuscleGroups(d).then((groups) => {
+      setMuscleGroups(groups);
+      if (groups.length > 0 && !targetMuscle()) {
+        const leaves = groups.filter((g) => !groups.some((c) => c.parent === g.id));
+        setTargetMuscle(leaves.length > 0 ? leaves[0].id : groups[0].id);
+      }
+    });
   });
 
   // Search as user types
-  createEffect(async () => {
+  createEffect(() => {
     const d = db();
     if (!d || mode() !== "search") return;
     const q = searchQuery();
-    const found = await searchExercises(d, q);
-    setResults(found);
+    searchExercises(d, q).then((found) => setResults(found));
   });
 
   const groupedMuscles = () => {
