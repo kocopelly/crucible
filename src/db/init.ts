@@ -56,9 +56,16 @@ CREATE TABLE IF NOT EXISTS sets (
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let _db: { sqlite3: any; db: number } | null = null;
+let _initPromise: Promise<{ sqlite3: any; db: number }> | null = null;
 
 export async function getDB() {
   if (_db) return _db;
+  if (_initPromise) return _initPromise;
+  _initPromise = _initDB();
+  return _initPromise;
+}
+
+async function _initDB() {
 
   const module = await SQLiteESMFactory();
   const sqlite3 = Factory(module);
@@ -95,10 +102,11 @@ export async function getDB() {
     // Column already exists — expected
   }
 
-  _db = { sqlite3, db };
+  const instance = { sqlite3, db };
 
-  // Seed data
-  await seedMuscleGroups(_db);
+  // Seed data before exposing the DB
+  await seedMuscleGroups(instance);
 
+  _db = instance;
   return _db;
 }
