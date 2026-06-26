@@ -82,6 +82,7 @@ const Session: Component = () => {
     setLoading(true);
     try {
       const active = await getActiveSession(d);
+      console.log("[Session] resumeActiveSession:", active ? `found ${active.id}` : "no active session");
       if (active) {
         setSession(active);
         setFinished(false);
