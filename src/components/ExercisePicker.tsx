@@ -83,7 +83,7 @@ const ExercisePicker: Component<ExercisePickerProps> = (props) => {
   const handleCreate = async () => {
     const d = db();
     if (!d) return;
-    const target = muscleGroups().find((m) => m.id === targetMuscle());
+    const target = MUSCLE_OPTIONS.find((m) => m.id === targetMuscle());
     if (!target) {
       setError("Please select a target muscle");
       return;
