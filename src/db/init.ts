@@ -1,6 +1,6 @@
 import SQLiteESMFactory from "wa-sqlite/dist/wa-sqlite-async.mjs";
 import { Factory } from "wa-sqlite";
-import { IDBBatchAtomicVFS } from "wa-sqlite/src/examples/IDBBatchAtomicVFS.js";
+import { IDBMinimalVFS } from "wa-sqlite/src/examples/IDBMinimalVFS.js";
 import { MemoryVFS } from "wa-sqlite/src/examples/MemoryVFS.js";
 import { seedMuscleGroups } from "./seed";
 
@@ -67,7 +67,7 @@ export async function getDB() {
 
   try {
     // Try IndexedDB-backed VFS for persistence
-    const vfs = new IDBBatchAtomicVFS("crucible-idb");
+    const vfs = new IDBMinimalVFS("crucible-idb");
     sqlite3.vfs_register(vfs, true);
     db = await sqlite3.open_v2("crucible.db");
     persistent = true;
