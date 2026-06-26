@@ -1,5 +1,5 @@
-import { createSignal, createEffect, onMount, For, Show, type Component } from "solid-js";
-import { useDb } from "../db/context";
+import { createSignal, createEffect, For, Show, type Component } from "solid-js";
+import { getDB } from "../db/init";
 import {
   getRecentSessions,
   getWeekStats,
@@ -62,7 +62,7 @@ const Dashboard: Component<{
   onMuscleClick?: (id: string) => void;
   onExerciseClick?: (id: string) => void;
 }> = (props) => {
-  const { db } = useDb();
+  type DB = Awaited<ReturnType<typeof getDB>>;
   const [sessionCount, setSessionCount] = createSignal(0);
   const [setCount, setSetCount] = createSignal(0);
   const [recentSessions, setRecentSessions] = createSignal<SessionSummary[]>([]);
@@ -72,15 +72,12 @@ const Dashboard: Component<{
 
   // Load on mount and whenever refreshKey changes (tab switch)
   createEffect(() => {
-    const key = props.refreshKey;
-    const d = db();
-    console.log("[Dashboard] effect: refreshKey=", key, "db=", !!d);
-    if (d) loadDashboard(d);
+    const _key = props.refreshKey; // track changes
+    getDB().then((d) => loadDashboard(d));
   });
 
-  const loadDashboard = async (d: NonNullable<ReturnType<typeof db>>) => {
+  const loadDashboard = async (d: DB) => {
     const stats = await getWeekStats(d);
-    console.log("[Dashboard] stats:", stats);
     setSessionCount(stats.sessionCount);
     setSetCount(stats.setCount);
 
@@ -102,8 +99,7 @@ const Dashboard: Component<{
   };
 
   const viewSession = async (session: Session) => {
-    const d = db();
-    if (!d) return;
+    const d = await getDB();
 
     const sets = await getSetsForSession(d, session.id);
     const exerciseMap = new Map<string, Set[]>();
@@ -122,8 +118,7 @@ const Dashboard: Component<{
   };
 
   const handleExport = async () => {
-    const d = db();
-    if (!d) return;
+    const d = await getDB();
     setExporting(true);
     try {
       const json = await exportAllData(d);

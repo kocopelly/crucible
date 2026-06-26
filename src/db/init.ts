@@ -59,13 +59,25 @@ const STORAGE_KEY = "crucible-db-sql";
 type DBInstance = { sqlite3: any; db: number };
 let _db: DBInstance | null = null;
 let _initPromise: Promise<DBInstance> | null = null;
-let _initCount = 0;
+
+// ── DB access serialization ───────────────────────────────
+// wa-sqlite's async build has ONE connection. Two statements stepping
+// concurrently corrupt the pipeline ("not a statement" / wrong results).
+// Every query/run/save goes through this single promise chain so DB access
+// is strictly serialized, regardless of how many callers fire in parallel.
+let _dbLock: Promise<unknown> = Promise.resolve();
+export function withDbLock<T>(fn: () => Promise<T>): Promise<T> {
+  const result = _dbLock.then(fn, fn);
+  _dbLock = result.then(
+    () => undefined,
+    () => undefined
+  );
+  return result;
+}
 
 export async function getDB(): Promise<DBInstance> {
-  console.log(`[DB] getDB called: _db=${!!_db}, _initPromise=${!!_initPromise}, count=${_initCount}`);
   if (_db) return _db;
   if (_initPromise) return _initPromise;
-  _initCount++;
   _initPromise = _initDB();
   return _initPromise;
 }
@@ -106,39 +118,42 @@ async function _initDB(): Promise<DBInstance> {
 /** Save all data to localStorage as SQL INSERT statements */
 export async function saveDB(): Promise<void> {
   if (!_db) return;
+  const db = _db;
 
-  try {
-    const tables = ["muscle_groups", "exercises", "exercise_muscles", "sessions", "sets"];
-    const statements: string[] = [];
+  await withDbLock(async () => {
+    try {
+      const tables = ["muscle_groups", "exercises", "exercise_muscles", "sessions", "sets"];
+      const statements: string[] = [];
 
-    for (const table of tables) {
-      const rows: Record<string, unknown>[] = [];
-      await _db.sqlite3.exec(
-        _db.db,
-        `SELECT * FROM ${table}`,
-        (row: unknown[], columns: string[]) => {
-          const obj: Record<string, unknown> = {};
-          columns.forEach((col, i) => { obj[col] = row[i]; });
-          rows.push(obj);
-        }
-      );
-
-      for (const row of rows) {
-        const cols = Object.keys(row);
-        const vals = cols.map((c) => {
-          const v = row[c];
-          if (v === null || v === undefined) return "NULL";
-          if (typeof v === "number") return String(v);
-          return `'${String(v).replace(/'/g, "''")}'`;
-        });
-        statements.push(
-          `INSERT OR REPLACE INTO ${table} (${cols.join(",")}) VALUES (${vals.join(",")});`
+      for (const table of tables) {
+        const rows: Record<string, unknown>[] = [];
+        await db.sqlite3.exec(
+          db.db,
+          `SELECT * FROM ${table}`,
+          (row: unknown[], columns: string[]) => {
+            const obj: Record<string, unknown> = {};
+            columns.forEach((col, i) => { obj[col] = row[i]; });
+            rows.push(obj);
+          }
         );
-      }
-    }
 
-    localStorage.setItem(STORAGE_KEY, statements.join("\n"));
-  } catch (e) {
-    console.warn("[Crucible DB] Save failed:", e);
-  }
+        for (const row of rows) {
+          const cols = Object.keys(row);
+          const vals = cols.map((c) => {
+            const v = row[c];
+            if (v === null || v === undefined) return "NULL";
+            if (typeof v === "number") return String(v);
+            return `'${String(v).replace(/'/g, "''")}'`;
+          });
+          statements.push(
+            `INSERT OR REPLACE INTO ${table} (${cols.join(",")}) VALUES (${vals.join(",")});`
+          );
+        }
+      }
+
+      localStorage.setItem(STORAGE_KEY, statements.join("\n"));
+    } catch (e) {
+      console.warn("[Crucible DB] Save failed:", e);
+    }
+  });
 }

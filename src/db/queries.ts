@@ -1,5 +1,5 @@
 import type { MuscleGroup, Exercise, ExerciseMuscle, Session, Set } from "../lib/types";
-import { saveDB } from "./init";
+import { saveDB, withDbLock } from "./init";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type DB = { sqlite3: any; db: number };
@@ -17,26 +17,12 @@ async function query<T = Record<string, unknown>>(
   sql: string,
   params?: unknown[]
 ): Promise<T[]> {
-  const results: T[] = [];
-  if (params && params.length > 0) {
-    // Use prepared statement for parameterized queries
-    const str = db.sqlite3.str_new(db.db, sql);
-    const prepared = await db.sqlite3.prepare_v2(db.db, db.sqlite3.str_value(str));
-    if (prepared === null) {
-      db.sqlite3.str_finish(str);
-      return results;
-    }
-    const stmt = prepared.stmt;
-    try {
-      for (let i = 0; i < params.length; i++) {
-        const val = params[i];
-        if (val === null || val === undefined) {
-          db.sqlite3.bind(stmt, i + 1, null);
-        } else if (typeof val === "number") {
-          db.sqlite3.bind(stmt, i + 1, val);
-        } else {
-          db.sqlite3.bind(stmt, i + 1, String(val));
-        }
+  return withDbLock(async () => {
+    const results: T[] = [];
+    for await (const stmt of db.sqlite3.statements(db.db, sql)) {
+      if (params && params.length > 0) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        db.sqlite3.bind_collection(stmt, params as any);
       }
       const cols = db.sqlite3.column_names(stmt);
       while ((await db.sqlite3.step(stmt)) === 100 /* SQLITE_ROW */) {
@@ -46,52 +32,22 @@ async function query<T = Record<string, unknown>>(
         }
         results.push(obj as T);
       }
-    } finally {
-      await db.sqlite3.finalize(stmt);
-      db.sqlite3.str_finish(str);
     }
-  } else {
-    // Simple exec for non-parameterized queries
-    await db.sqlite3.exec(db.db, sql, (row: unknown[], columns: string[]) => {
-      const obj: Record<string, unknown> = {};
-      columns.forEach((col, i) => {
-        obj[col] = row[i];
-      });
-      results.push(obj as T);
-    });
-  }
-  return results;
+    return results;
+  });
 }
 
 /** Run a SQL statement (no results needed). Auto-saves to localStorage. */
 async function run(db: DB, sql: string, params?: unknown[]): Promise<void> {
-  if (params && params.length > 0) {
-    const str = db.sqlite3.str_new(db.db, sql);
-    const prepared = await db.sqlite3.prepare_v2(db.db, db.sqlite3.str_value(str));
-    if (prepared === null) {
-      db.sqlite3.str_finish(str);
-      return;
-    }
-    const stmt = prepared.stmt;
-    try {
-      for (let i = 0; i < params.length; i++) {
-        const val = params[i];
-        if (val === null || val === undefined) {
-          db.sqlite3.bind(stmt, i + 1, null);
-        } else if (typeof val === "number") {
-          db.sqlite3.bind(stmt, i + 1, val);
-        } else {
-          db.sqlite3.bind(stmt, i + 1, String(val));
-        }
+  await withDbLock(async () => {
+    for await (const stmt of db.sqlite3.statements(db.db, sql)) {
+      if (params && params.length > 0) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        db.sqlite3.bind_collection(stmt, params as any);
       }
       await db.sqlite3.step(stmt);
-    } finally {
-      await db.sqlite3.finalize(stmt);
-      db.sqlite3.str_finish(str);
     }
-  } else {
-    await db.sqlite3.exec(db.db, sql);
-  }
+  });
   scheduleSave();
 }
 

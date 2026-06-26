@@ -1,5 +1,5 @@
 import { createSignal, createEffect, For, Show, type Component } from "solid-js";
-import { useDb } from "../db/context";
+import { getDB } from "../db/init";
 import { getAllExercises, searchExercises } from "../db/queries";
 import type { Exercise } from "../lib/types";
 import ExercisePicker from "./ExercisePicker";
@@ -8,13 +8,13 @@ const Exercises: Component<{
   refreshKey?: number;
   onExerciseClick?: (id: string) => void;
 }> = (props) => {
-  const { db } = useDb();
+  type DB = Awaited<ReturnType<typeof getDB>>;
   const [exercises, setExercises] = createSignal<Exercise[]>([]);
   const [searchQuery, setSearchQuery] = createSignal("");
   const [showPicker, setShowPicker] = createSignal(false);
   const [loaded, setLoaded] = createSignal(false);
 
-  const loadExercises = async (d: NonNullable<ReturnType<typeof db>>, q: string) => {
+  const loadExercises = async (d: DB, q: string) => {
     const results = q ? await searchExercises(d, q) : await getAllExercises(d);
     setExercises(results);
     setLoaded(true);
@@ -23,16 +23,13 @@ const Exercises: Component<{
   // Reload when search query or refreshKey changes
   createEffect(() => {
     const _ = props.refreshKey; // track
-    const d = db();
-    if (!d) return;
     const q = searchQuery();
-    loadExercises(d, q);
+    getDB().then((d) => loadExercises(d, q));
   });
 
   const handleCreated = () => {
     setShowPicker(false);
-    const d = db();
-    if (d) loadExercises(d, searchQuery());
+    getDB().then((d) => loadExercises(d, searchQuery()));
   };
 
   return (
