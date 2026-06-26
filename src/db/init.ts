@@ -59,10 +59,13 @@ const STORAGE_KEY = "crucible-db-sql";
 type DBInstance = { sqlite3: any; db: number };
 let _db: DBInstance | null = null;
 let _initPromise: Promise<DBInstance> | null = null;
+let _initCount = 0;
 
 export async function getDB(): Promise<DBInstance> {
+  console.log(`[DB] getDB called: _db=${!!_db}, _initPromise=${!!_initPromise}, count=${_initCount}`);
   if (_db) return _db;
   if (_initPromise) return _initPromise;
+  _initCount++;
   _initPromise = _initDB();
   return _initPromise;
 }
