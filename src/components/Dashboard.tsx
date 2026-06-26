@@ -73,8 +73,8 @@ const Dashboard: Component<{
   // Load on mount and whenever refreshKey changes (tab switch)
   createEffect(() => {
     const key = props.refreshKey;
-    console.log("[Dashboard] createEffect fired, refreshKey=", key);
     const d = db();
+    console.log("[Dashboard] effect: refreshKey=", key, "db=", !!d);
     if (d) loadDashboard(d);
   });
 
