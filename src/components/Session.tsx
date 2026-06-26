@@ -1,13 +1,11 @@
-import { createSignal, createEffect, For, Show, type Component } from "solid-js";
+import { createSignal, For, Show, type Component } from "solid-js";
 import { useDb } from "../db/context";
 import {
   createSession,
   addSet,
   updateSet,
   deleteSet,
-  getSetsForSession,
   getLastSetsForExercise,
-  getExercise,
 } from "../db/queries";
 import type { Exercise, Session as SessionType, Set } from "../lib/types";
 import ExercisePicker from "./ExercisePicker";
@@ -17,6 +15,55 @@ interface ExerciseBlock {
   sets: Set[];
   lastTime: { date: string; sets: Set[] } | null;
 }
+
+const SetRow: Component<{
+  set: Set;
+  index: number;
+  onUpdate: (field: "weight" | "reps", value: number) => void;
+  onDelete: () => void;
+}> = (props) => {
+  let weightRef!: HTMLInputElement;
+  let repsRef!: HTMLInputElement;
+
+  return (
+    <div class="grid grid-cols-[1.5rem_1fr_1rem_1fr_1.5rem] gap-1.5 items-center">
+      <span class="text-gray-500 text-sm text-center">{props.index + 1}</span>
+      <input
+        ref={weightRef}
+        type="number"
+        inputmode="decimal"
+        value={props.set.weight || ""}
+        placeholder="0"
+        class="bg-gray-700/50 border border-gray-600/50 rounded-lg px-2 py-2 text-center text-gray-100 min-h-[44px] focus:outline-none focus:border-emerald-600 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+        onBlur={(e) => {
+          const v = parseFloat(e.currentTarget.value) || 0;
+          props.onUpdate("weight", v);
+        }}
+      />
+      <span class="text-gray-500 text-center text-sm">×</span>
+      <input
+        ref={repsRef}
+        type="number"
+        inputmode="numeric"
+        value={props.set.reps || ""}
+        placeholder="0"
+        class="bg-gray-700/50 border border-gray-600/50 rounded-lg px-2 py-2 text-center text-gray-100 min-h-[44px] focus:outline-none focus:border-emerald-600 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+        onBlur={(e) => {
+          const v = parseInt(e.currentTarget.value) || 0;
+          props.onUpdate("reps", v);
+        }}
+      />
+      <button
+        class="text-gray-600 hover:text-red-400 transition-colors min-h-[44px] flex items-center justify-center"
+        onClick={() => props.onDelete()}
+      >
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+  );
+};
 
 const Session: Component = () => {
   const { db } = useDb();
@@ -104,6 +151,7 @@ const Session: Component = () => {
     const set = blocks()[blockIndex].sets[setIndex];
     await updateSet(d, set.id, { [field]: value });
 
+    // Update signal without causing re-render of the input (SetRow is a separate component)
     setBlocks((prev) => {
       const updated = [...prev];
       const updatedSets = [...updated[blockIndex].sets];
@@ -139,7 +187,7 @@ const Session: Component = () => {
   };
 
   return (
-    <div class="p-4">
+    <div class="px-3 py-4">
       <h1 class="text-2xl font-bold mb-4">Log Workout</h1>
 
       {/* No active session */}
@@ -174,23 +222,23 @@ const Session: Component = () => {
 
       {/* Active session */}
       <Show when={session() && !finished()}>
-        <div class="space-y-4">
+        <div class="space-y-3">
           {/* Exercise blocks */}
           <For each={blocks()}>
             {(block, blockIndex) => (
               <div class="rounded-xl bg-gray-800/50 border border-gray-700/50 overflow-hidden">
-                <div class="p-3 border-b border-gray-700/50">
-                  <h3 class="font-medium text-gray-100">{block.exercise.display_name}</h3>
+                <div class="px-3 py-2.5 border-b border-gray-700/50">
+                  <h3 class="font-medium text-gray-100 text-sm leading-tight">{block.exercise.display_name}</h3>
                   <Show when={block.lastTime}>
-                    <p class="text-xs text-gray-500 mt-1">
+                    <p class="text-xs text-gray-500 mt-0.5">
                       Last: {block.lastTime!.date} — {block.lastTime!.sets.map((s) => `${s.weight}×${s.reps}`).join(", ")}
                     </p>
                   </Show>
                 </div>
 
-                <div class="p-3 space-y-2">
+                <div class="px-2 py-2 space-y-1.5">
                   {/* Header row */}
-                  <div class="grid grid-cols-[2rem_1fr_1.5rem_1fr_2rem] gap-2 text-xs text-gray-500 px-1">
+                  <div class="grid grid-cols-[1.5rem_1fr_1rem_1fr_1.5rem] gap-1.5 text-xs text-gray-500 px-1">
                     <span>#</span>
                     <span>Weight</span>
                     <span></span>
@@ -200,45 +248,17 @@ const Session: Component = () => {
 
                   <For each={block.sets}>
                     {(set, setIndex) => (
-                      <div class="grid grid-cols-[2rem_1fr_1.5rem_1fr_2rem] gap-2 items-center">
-                        <span class="text-gray-500 text-sm text-center">{setIndex() + 1}</span>
-                        <input
-                          type="number"
-                          inputmode="decimal"
-                          value={set.weight || ""}
-                          placeholder="0"
-                          class="bg-gray-700/50 border border-gray-600/50 rounded-lg px-3 py-2 text-center text-gray-100 min-h-[44px] focus:outline-none focus:border-emerald-600 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                          onInput={(e) => {
-                            const v = parseFloat(e.currentTarget.value) || 0;
-                            handleUpdateSet(blockIndex(), setIndex(), "weight", v);
-                          }}
-                        />
-                        <span class="text-gray-500 text-center">×</span>
-                        <input
-                          type="number"
-                          inputmode="decimal"
-                          value={set.reps || ""}
-                          placeholder="0"
-                          class="bg-gray-700/50 border border-gray-600/50 rounded-lg px-3 py-2 text-center text-gray-100 min-h-[44px] focus:outline-none focus:border-emerald-600 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                          onInput={(e) => {
-                            const v = parseInt(e.currentTarget.value) || 0;
-                            handleUpdateSet(blockIndex(), setIndex(), "reps", v);
-                          }}
-                        />
-                        <button
-                          class="text-gray-600 hover:text-red-400 transition-colors min-h-[44px] flex items-center justify-center"
-                          onClick={() => handleDeleteSet(blockIndex(), setIndex())}
-                        >
-                          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
-                      </div>
+                      <SetRow
+                        set={set}
+                        index={setIndex()}
+                        onUpdate={(field, value) => handleUpdateSet(blockIndex(), setIndex(), field, value)}
+                        onDelete={() => handleDeleteSet(blockIndex(), setIndex())}
+                      />
                     )}
                   </For>
 
                   <button
-                    class="w-full py-2 text-sm text-gray-400 hover:text-emerald-400 transition-colors min-h-[44px]"
+                    class="w-full py-2 text-sm text-gray-400 hover:text-emerald-400 transition-colors min-h-[40px]"
                     onClick={() => handleAddSet(blockIndex())}
                   >
                     + Add Set

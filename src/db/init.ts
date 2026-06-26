@@ -1,5 +1,6 @@
 import SQLiteESMFactory from "wa-sqlite/dist/wa-sqlite-async.mjs";
 import { Factory } from "wa-sqlite";
+import { IDBBatchAtomicVFS } from "wa-sqlite/src/examples/IDBBatchAtomicVFS.js";
 import { MemoryVFS } from "wa-sqlite/src/examples/MemoryVFS.js";
 import { seedMuscleGroups } from "./seed";
 
@@ -62,28 +63,29 @@ export async function getDB() {
   const sqlite3 = Factory(module);
 
   let db: number;
-  let persistent = false;
 
-  // Use MemoryVFS for now — IDB VFS implementations have compatibility
-  // issues. Data lives in memory per session. Persistence via export/import.
-  // TODO: Fix IDB persistence (IDBBatchAtomicVFS journal error, IDBMinimalVFS offset error)
   try {
-    const vfs = new MemoryVFS();
+    // IDBBatchAtomicVFS — persists to IndexedDB
+    // Note: journal "file not found" errors in console are expected and harmless.
+    // SQLite probes for the journal; CANTOPEN tells it no hot journal exists.
+    const vfs = new IDBBatchAtomicVFS("crucible-idb");
     sqlite3.vfs_register(vfs, true);
     db = await sqlite3.open_v2("crucible.db");
-    console.log("[Crucible DB] Using in-memory database");
-  } catch {
-    db = await sqlite3.open_v2("crucible.db");
-    console.log("[Crucible DB] Using default VFS");
+    console.log("[Crucible DB] Using IndexedDB persistence (IDBBatchAtomicVFS)");
+  } catch (e) {
+    console.warn("[Crucible DB] IDB VFS failed, falling back to in-memory:", e);
+    try {
+      const vfs = new MemoryVFS();
+      sqlite3.vfs_register(vfs, true);
+      db = await sqlite3.open_v2("crucible.db");
+    } catch {
+      db = await sqlite3.open_v2("crucible.db");
+    }
+    console.warn("[Crucible DB] Using in-memory database (data will not persist)");
   }
 
-  // Run schema
-  const statements = SCHEMA.split(";")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  for (const stmt of statements) {
-    await sqlite3.exec(db, stmt + ";");
-  }
+  // Execute full schema in one call — avoid multiple sequential transactions
+  await sqlite3.exec(db, SCHEMA);
 
   _db = { sqlite3, db };
 
