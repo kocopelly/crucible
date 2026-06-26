@@ -1,4 +1,4 @@
-import { createSignal, createEffect, For, Show, type Component } from "solid-js";
+import { createSignal, onMount, For, Show, type Component } from "solid-js";
 import { useDb } from "../db/context";
 import {
   getRecentSessions,
@@ -69,10 +69,9 @@ const Dashboard: Component<{
   const [muscleVolumes, setMuscleVolumes] = createSignal<MuscleVolume[]>([]);
   const [exporting, setExporting] = createSignal(false);
 
-  createEffect(() => {
+  onMount(() => {
     const d = db();
-    if (!d) return;
-    loadDashboard(d);
+    if (d) loadDashboard(d);
   });
 
   const loadDashboard = async (d: NonNullable<ReturnType<typeof db>>) => {

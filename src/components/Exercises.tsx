@@ -1,4 +1,4 @@
-import { createSignal, createEffect, onMount, For, Show, type Component } from "solid-js";
+import { createSignal, createEffect, For, Show, type Component } from "solid-js";
 import { useDb } from "../db/context";
 import { getAllExercises, searchExercises } from "../db/queries";
 import type { Exercise } from "../lib/types";

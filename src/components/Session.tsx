@@ -1,4 +1,4 @@
-import { createSignal, createEffect, For, Show, type Component } from "solid-js";
+import { createSignal, onMount, For, Show, type Component } from "solid-js";
 import { useDb } from "../db/context";
 import {
   createSession,
@@ -73,10 +73,9 @@ const Session: Component = () => {
   const [loading, setLoading] = createSignal(true);
 
   // On mount: check for an active (unfinished) session and resume it
-  createEffect(() => {
+  onMount(() => {
     const d = db();
-    if (!d) return;
-    resumeActiveSession(d);
+    if (d) resumeActiveSession(d);
   });
 
   const resumeActiveSession = async (d: NonNullable<ReturnType<typeof db>>) => {

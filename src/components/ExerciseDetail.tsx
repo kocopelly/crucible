@@ -1,4 +1,4 @@
-import { createSignal, createEffect, For, Show, type Component } from "solid-js";
+import { createSignal, onMount, For, Show, type Component } from "solid-js";
 import { useDb } from "../db/context";
 import { getExercise, getExerciseHistory, getExerciseMuscles } from "../db/queries";
 import type { Exercise, Set, Session } from "../lib/types";
@@ -24,7 +24,7 @@ const ExerciseDetail: Component<{
   const [history, setHistory] = createSignal<SessionHistory[]>([]);
   const [muscles, setMuscles] = createSignal<{ id: string; weight: number }[]>([]);
 
-  createEffect(() => {
+  onMount(() => {
     const d = db();
     if (!d) return;
     loadExercise(d);

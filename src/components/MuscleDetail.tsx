@@ -1,4 +1,4 @@
-import { createSignal, createEffect, For, Show, type Component } from "solid-js";
+import { createSignal, onMount, For, Show, type Component } from "solid-js";
 import { useDb } from "../db/context";
 import {
   getWeeklyMuscleVolume,
@@ -19,7 +19,7 @@ const MuscleDetail: Component<{
   const [childVolume, setChildVolume] = createSignal<{ muscleId: string; muscle: string; sets: number }[]>([]);
   const [exercises, setExercises] = createSignal<{ exercise: Exercise; weight: number }[]>([]);
 
-  createEffect(() => {
+  onMount(() => {
     const d = db();
     if (!d) return;
     loadMuscle(d);
