@@ -1,6 +1,5 @@
 import SQLiteESMFactory from "wa-sqlite/dist/wa-sqlite-async.mjs";
 import { Factory } from "wa-sqlite";
-import { IDBMinimalVFS } from "wa-sqlite/src/examples/IDBMinimalVFS.js";
 import { MemoryVFS } from "wa-sqlite/src/examples/MemoryVFS.js";
 import { seedMuscleGroups } from "./seed";
 
@@ -65,24 +64,17 @@ export async function getDB() {
   let db: number;
   let persistent = false;
 
+  // Use MemoryVFS for now — IDB VFS implementations have compatibility
+  // issues. Data lives in memory per session. Persistence via export/import.
+  // TODO: Fix IDB persistence (IDBBatchAtomicVFS journal error, IDBMinimalVFS offset error)
   try {
-    // Try IndexedDB-backed VFS for persistence
-    const vfs = new IDBMinimalVFS("crucible-idb");
+    const vfs = new MemoryVFS();
     sqlite3.vfs_register(vfs, true);
     db = await sqlite3.open_v2("crucible.db");
-    persistent = true;
-    console.log("[Crucible DB] Using IndexedDB persistence");
-  } catch (e) {
-    console.warn("[Crucible DB] IndexedDB VFS failed, falling back to in-memory:", e);
-    try {
-      const vfs = new MemoryVFS();
-      sqlite3.vfs_register(vfs, true);
-      db = await sqlite3.open_v2("crucible.db");
-    } catch {
-      // Last resort: default VFS
-      db = await sqlite3.open_v2("crucible.db");
-    }
-    console.warn("[Crucible DB] Using in-memory database (data will not persist)");
+    console.log("[Crucible DB] Using in-memory database");
+  } catch {
+    db = await sqlite3.open_v2("crucible.db");
+    console.log("[Crucible DB] Using default VFS");
   }
 
   // Run schema
