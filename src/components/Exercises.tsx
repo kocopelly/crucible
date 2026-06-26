@@ -29,7 +29,8 @@ const Exercises: Component<{
 
   const handleCreated = () => {
     setShowPicker(false);
-    loadExercises();
+    const d = db();
+    if (d) loadExercises(d, searchQuery());
   };
 
   return (
