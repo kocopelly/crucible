@@ -26,35 +26,35 @@ const SetRow: Component<{
   let repsRef!: HTMLInputElement;
 
   return (
-    <div class="grid grid-cols-[1.5rem_1fr_1rem_1fr_1.5rem] gap-1.5 items-center">
-      <span class="text-gray-500 text-sm text-center">{props.index + 1}</span>
+    <div class="flex items-center gap-1">
+      <span class="text-gray-500 text-xs w-5 text-center shrink-0">{props.index + 1}</span>
       <input
         ref={weightRef}
         type="number"
         inputmode="decimal"
         value={props.set.weight || ""}
         placeholder="0"
-        class="bg-gray-700/50 border border-gray-600/50 rounded-lg px-2 py-2 text-center text-gray-100 min-h-[44px] focus:outline-none focus:border-emerald-600 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+        class="flex-1 min-w-0 bg-gray-700/50 border border-gray-600/50 rounded-lg px-2 py-2 text-center text-gray-100 min-h-[44px] focus:outline-none focus:border-emerald-600 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
         onBlur={(e) => {
           const v = parseFloat(e.currentTarget.value) || 0;
           props.onUpdate("weight", v);
         }}
       />
-      <span class="text-gray-500 text-center text-sm">×</span>
+      <span class="text-gray-500 text-xs shrink-0">×</span>
       <input
         ref={repsRef}
         type="number"
         inputmode="numeric"
         value={props.set.reps || ""}
         placeholder="0"
-        class="bg-gray-700/50 border border-gray-600/50 rounded-lg px-2 py-2 text-center text-gray-100 min-h-[44px] focus:outline-none focus:border-emerald-600 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+        class="flex-1 min-w-0 bg-gray-700/50 border border-gray-600/50 rounded-lg px-2 py-2 text-center text-gray-100 min-h-[44px] focus:outline-none focus:border-emerald-600 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
         onBlur={(e) => {
           const v = parseInt(e.currentTarget.value) || 0;
           props.onUpdate("reps", v);
         }}
       />
       <button
-        class="text-gray-600 hover:text-red-400 transition-colors min-h-[44px] flex items-center justify-center"
+        class="text-gray-600 hover:text-red-400 transition-colors w-8 h-[44px] flex items-center justify-center shrink-0"
         onClick={() => props.onDelete()}
       >
         <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -238,12 +238,12 @@ const Session: Component = () => {
 
                 <div class="px-2 py-2 space-y-1.5">
                   {/* Header row */}
-                  <div class="grid grid-cols-[1.5rem_1fr_1rem_1fr_1.5rem] gap-1.5 text-xs text-gray-500 px-1">
-                    <span>#</span>
-                    <span>Weight</span>
-                    <span></span>
-                    <span>Reps</span>
-                    <span></span>
+                  <div class="flex items-center gap-1 text-xs text-gray-500 px-1">
+                    <span class="w-5 shrink-0">#</span>
+                    <span class="flex-1">Weight</span>
+                    <span class="shrink-0">&nbsp;</span>
+                    <span class="flex-1">Reps</span>
+                    <span class="w-8 shrink-0"></span>
                   </div>
 
                   <For each={block.sets}>
