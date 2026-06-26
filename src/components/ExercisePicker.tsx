@@ -71,6 +71,21 @@ const ExercisePicker: Component<ExercisePickerProps> = (props) => {
     }));
   };
 
+  const flatMuscleOptions = () => {
+    const opts: { id: string; name: string; indent: boolean }[] = [];
+    for (const group of groupedMuscles()) {
+      if (group.children.length > 0) {
+        opts.push({ id: group.parent.id, name: `── ${group.parent.name} ──`, indent: false });
+        for (const child of group.children) {
+          opts.push({ id: child.id, name: child.name, indent: true });
+        }
+      } else {
+        opts.push({ id: group.parent.id, name: group.parent.name, indent: false });
+      }
+    }
+    return opts;
+  };
+
   const generatedName = () => {
     const target = muscleGroups().find((m) => m.id === targetMuscle());
     const parts = [position(), equipment(), target?.name, angle(), movement()].filter(Boolean);
@@ -182,21 +197,11 @@ const ExercisePicker: Component<ExercisePickerProps> = (props) => {
                   value={targetMuscle()}
                   onChange={(e) => setTargetMuscle(e.currentTarget.value)}
                 >
-                  <For each={groupedMuscles()}>
-                    {(group) => (
-                      <>
-                        <Show when={group.children.length > 0}>
-                          <optgroup label={group.parent.name}>
-                            <option value={group.parent.id}>{group.parent.name} (General)</option>
-                            <For each={group.children}>
-                              {(child) => <option value={child.id}>{child.name}</option>}
-                            </For>
-                          </optgroup>
-                        </Show>
-                        <Show when={group.children.length === 0}>
-                          <option value={group.parent.id}>{group.parent.name}</option>
-                        </Show>
-                      </>
+                  <For each={flatMuscleOptions()}>
+                    {(opt) => (
+                      <option value={opt.id}>
+                        {opt.indent ? `  ${opt.name}` : opt.name}
+                      </option>
                     )}
                   </For>
                 </select>

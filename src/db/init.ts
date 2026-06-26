@@ -67,7 +67,7 @@ export async function getDB() {
 
   try {
     // Try IndexedDB-backed VFS for persistence
-    const vfs = await IDBBatchAtomicVFS.create("crucible-idb", module);
+    const vfs = new IDBBatchAtomicVFS("crucible-idb");
     sqlite3.vfs_register(vfs, true);
     db = await sqlite3.open_v2("crucible.db");
     persistent = true;
