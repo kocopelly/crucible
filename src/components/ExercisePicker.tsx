@@ -1,12 +1,11 @@
-import { createSignal, createEffect, createResource, For, Show, type Component } from "solid-js";
+import { createSignal, createEffect, For, Show, type Component } from "solid-js";
 import { useDb } from "../db/context";
 import {
   searchExercises,
   createExercise,
   setExerciseMuscles,
-  getAllMuscleGroups,
 } from "../db/queries";
-import type { Exercise, MuscleGroup } from "../lib/types";
+import type { Exercise } from "../lib/types";
 
 interface ExercisePickerProps {
   onSelect: (exercise: Exercise) => void;
@@ -21,21 +20,40 @@ const MOVEMENTS = [
   "Squat", "Deadlift", "Lunge", "Shrug", "Pullup", "Dip", "Crunch", "Kickback",
 ];
 
+const MUSCLE_OPTIONS: { id: string; name: string; group: string }[] = [
+  { id: "upper-back", name: "Upper Back", group: "Back" },
+  { id: "mid-back", name: "Mid Back", group: "Back" },
+  { id: "lower-back", name: "Lower Back", group: "Back" },
+  { id: "front-delt", name: "Front Delt", group: "Shoulder" },
+  { id: "side-delt", name: "Side Delt", group: "Shoulder" },
+  { id: "rear-delt", name: "Rear Delt", group: "Shoulder" },
+  { id: "chest", name: "Chest", group: "Chest" },
+  { id: "upper-chest", name: "Upper Chest", group: "Chest" },
+  { id: "lower-chest", name: "Lower Chest", group: "Chest" },
+  { id: "quad", name: "Quad", group: "" },
+  { id: "hamstring", name: "Hamstring", group: "" },
+  { id: "glute", name: "Glute", group: "" },
+  { id: "calf", name: "Calf", group: "" },
+  { id: "adductor", name: "Adductor", group: "" },
+  { id: "bicep", name: "Bicep", group: "" },
+  { id: "tricep", name: "Tricep", group: "" },
+  { id: "forearm", name: "Forearm", group: "" },
+  { id: "abs", name: "Abs", group: "Core" },
+  { id: "obliques", name: "Obliques", group: "Core" },
+  { id: "traps", name: "Traps", group: "" },
+];
+
 const ExercisePicker: Component<ExercisePickerProps> = (props) => {
   const { db } = useDb();
   const [mode, setMode] = createSignal<"search" | "create" | "muscles">("search");
   const [searchQuery, setSearchQuery] = createSignal("");
   const [results, setResults] = createSignal<Exercise[]>([]);
-  const [muscleGroupsData] = createResource(db, async (d) => {
-    const groups = await getAllMuscleGroups(d);
-    return groups;
-  });
-  const muscleGroups = () => muscleGroupsData() ?? [];
+
 
   // Create mode state
   const [position, setPosition] = createSignal(POSITIONS[0]);
   const [equipment, setEquipment] = createSignal(EQUIPMENT[0]);
-  const [targetMuscle, setTargetMuscle] = createSignal("");
+  const [targetMuscle, setTargetMuscle] = createSignal(MUSCLE_OPTIONS[0].id);
   const [angle, setAngle] = createSignal("");
   const [movement, setMovement] = createSignal(MOVEMENTS[0]);
 
@@ -44,14 +62,7 @@ const ExercisePicker: Component<ExercisePickerProps> = (props) => {
   const [secondaryMuscles, setSecondaryMuscles] = createSignal<string[]>([]);
   const [error, setError] = createSignal("");
 
-  // Set default target muscle when groups load
-  createEffect(() => {
-    const groups = muscleGroups();
-    if (groups.length > 0 && !targetMuscle()) {
-      const leaves = groups.filter((g) => !groups.some((c) => c.parent === g.id));
-      setTargetMuscle(leaves.length > 0 ? leaves[0].id : groups[0].id);
-    }
-  });
+
 
   // Search as user types
   createEffect(() => {
@@ -61,32 +72,10 @@ const ExercisePicker: Component<ExercisePickerProps> = (props) => {
     searchExercises(d, q).then((found) => setResults(found));
   });
 
-  const groupedMuscles = () => {
-    const groups = muscleGroups();
-    const parents = groups.filter((g) => !g.parent);
-    return parents.map((p) => ({
-      parent: p,
-      children: groups.filter((g) => g.parent === p.id),
-    }));
-  };
 
-  const flatMuscleOptions = () => {
-    const opts: { id: string; name: string; indent: boolean }[] = [];
-    for (const group of groupedMuscles()) {
-      if (group.children.length > 0) {
-        opts.push({ id: group.parent.id, name: `── ${group.parent.name} ──`, indent: false });
-        for (const child of group.children) {
-          opts.push({ id: child.id, name: child.name, indent: true });
-        }
-      } else {
-        opts.push({ id: group.parent.id, name: group.parent.name, indent: false });
-      }
-    }
-    return opts;
-  };
 
   const generatedName = () => {
-    const target = muscleGroups().find((m) => m.id === targetMuscle());
+    const target = MUSCLE_OPTIONS.find((m) => m.id === targetMuscle());
     const parts = [position(), equipment(), target?.name, angle(), movement()].filter(Boolean);
     return parts.join(" · ");
   };
@@ -189,33 +178,15 @@ const ExercisePicker: Component<ExercisePickerProps> = (props) => {
               <SelectField label="Position" options={POSITIONS} value={position()} onChange={setPosition} />
               <SelectField label="Equipment" options={EQUIPMENT} value={equipment()} onChange={setEquipment} />
 
-              <div>
-                <label class="block text-xs text-gray-400 uppercase tracking-wide mb-1">Target Muscle</label>
-                <select
-                  class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-gray-100 min-h-[44px] focus:outline-none focus:border-emerald-600"
-                  value={targetMuscle()}
-                  onChange={(e) => setTargetMuscle(e.currentTarget.value)}
-                  ref={(el) => {
-                    createEffect(() => {
-                      const opts = flatMuscleOptions();
-                      el.innerHTML = "";
-                      for (const opt of opts) {
-                        const o = document.createElement("option");
-                        o.value = opt.id;
-                        o.textContent = opt.indent ? `  ${opt.name}` : opt.name;
-                        el.appendChild(o);
-                      }
-                      if (opts.length > 0 && !targetMuscle()) {
-                        setTargetMuscle(opts[0].id);
-                      }
-                      if (targetMuscle()) {
-                        el.value = targetMuscle();
-                      }
-                    });
-                  }}
-                >
-                </select>
-              </div>
+              <SelectField
+                label="Target Muscle"
+                options={MUSCLE_OPTIONS.map(m => m.name)}
+                value={MUSCLE_OPTIONS.find(m => m.id === targetMuscle())?.name ?? MUSCLE_OPTIONS[0].name}
+                onChange={(v) => {
+                  const found = MUSCLE_OPTIONS.find(m => m.name === v);
+                  if (found) setTargetMuscle(found.id);
+                }}
+              />
 
               <SelectField label="Angle (optional)" options={ANGLES} value={angle()} onChange={setAngle} />
               <SelectField label="Movement" options={MOVEMENTS} value={movement()} onChange={setMovement} />
@@ -258,7 +229,7 @@ const ExercisePicker: Component<ExercisePickerProps> = (props) => {
                 <p class="text-sm font-medium text-gray-300 mb-2">Primary Muscle</p>
                 <div class="rounded-lg bg-emerald-600/20 border border-emerald-600/50 p-3">
                   <span class="text-emerald-400">
-                    {muscleGroups().find((m) => m.id === createdExercise()?.target)?.name ?? "—"}
+                    {MUSCLE_OPTIONS.find((m) => m.id === createdExercise()?.target)?.name ?? "—"}
                   </span>
                   <span class="text-gray-500 text-sm ml-2">weight: 1.0</span>
                 </div>
@@ -267,7 +238,7 @@ const ExercisePicker: Component<ExercisePickerProps> = (props) => {
               <div>
                 <p class="text-sm font-medium text-gray-300 mb-2">Secondary Muscles (0.5)</p>
                 <div class="space-y-1">
-                  <For each={muscleGroups().filter((m) => m.id !== createdExercise()?.target)}>
+                  <For each={MUSCLE_OPTIONS.filter((m) => m.id !== createdExercise()?.target)}>
                     {(mg) => (
                       <button
                         class={`w-full text-left p-2 rounded-lg text-sm min-h-[44px] transition-colors ${
@@ -277,7 +248,7 @@ const ExercisePicker: Component<ExercisePickerProps> = (props) => {
                         }`}
                         onClick={() => toggleSecondary(mg.id)}
                       >
-                        {mg.parent ? "  " : ""}{mg.name}
+                        {mg.group ? "  " : ""}{mg.name}
                         <Show when={secondaryMuscles().includes(mg.id)}>
                           <span class="float-right">✓</span>
                         </Show>
