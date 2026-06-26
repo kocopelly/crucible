@@ -18,6 +18,8 @@ const AppContent: Component = () => {
   const { ready, error } = useDb();
   const [activeTab, setActiveTab] = createSignal<Tab>("dashboard");
   const [nav, setNav] = createSignal<Navigation>({});
+  // Incremented to tell components to refresh their data
+  const [refreshKey, setRefreshKey] = createSignal(0);
 
   const navigate = (n: Navigation) => setNav(n);
   const clearNav = () => setNav({});
@@ -25,6 +27,8 @@ const AppContent: Component = () => {
   const handleTabChange = (tab: Tab) => {
     clearNav();
     setActiveTab(tab);
+    // Bump refresh so the newly-visible tab reloads its data
+    setRefreshKey((k) => k + 1);
   };
 
   const hasDetailView = () => {
@@ -61,6 +65,7 @@ const AppContent: Component = () => {
         {/* Tabs persist — hidden via CSS, never unmounted */}
         <div style={{ display: hasDetailView() || activeTab() !== "dashboard" ? "none" : undefined }}>
           <Dashboard
+            refreshKey={refreshKey()}
             onMuscleClick={(id) => navigate({ muscleDetail: id })}
             onExerciseClick={(id) => navigate({ exerciseDetail: id })}
           />
@@ -69,7 +74,7 @@ const AppContent: Component = () => {
           <Session />
         </div>
         <div style={{ display: hasDetailView() || activeTab() !== "exercises" ? "none" : undefined }}>
-          <Exercises onExerciseClick={(id) => navigate({ exerciseDetail: id })} />
+          <Exercises refreshKey={refreshKey()} onExerciseClick={(id) => navigate({ exerciseDetail: id })} />
         </div>
       </Layout>
     </Show>

@@ -1,4 +1,4 @@
-import { createSignal, onMount, For, Show, type Component } from "solid-js";
+import { createSignal, createEffect, onMount, For, Show, type Component } from "solid-js";
 import { useDb } from "../db/context";
 import {
   getRecentSessions,
@@ -58,6 +58,7 @@ const TOP_LEVEL_MUSCLES = new Set([
 ]);
 
 const Dashboard: Component<{
+  refreshKey?: number;
   onMuscleClick?: (id: string) => void;
   onExerciseClick?: (id: string) => void;
 }> = (props) => {
@@ -69,7 +70,9 @@ const Dashboard: Component<{
   const [muscleVolumes, setMuscleVolumes] = createSignal<MuscleVolume[]>([]);
   const [exporting, setExporting] = createSignal(false);
 
-  onMount(() => {
+  // Load on mount and whenever refreshKey changes (tab switch)
+  createEffect(() => {
+    const _ = props.refreshKey; // track
     const d = db();
     if (d) loadDashboard(d);
   });

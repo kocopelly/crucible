@@ -5,6 +5,7 @@ import type { Exercise } from "../lib/types";
 import ExercisePicker from "./ExercisePicker";
 
 const Exercises: Component<{
+  refreshKey?: number;
   onExerciseClick?: (id: string) => void;
 }> = (props) => {
   const { db } = useDb();
@@ -19,8 +20,9 @@ const Exercises: Component<{
     setLoaded(true);
   };
 
-  // Reload when search query changes
+  // Reload when search query or refreshKey changes
   createEffect(() => {
+    const _ = props.refreshKey; // track
     const d = db();
     if (!d) return;
     const q = searchQuery();
