@@ -1,6 +1,5 @@
 import SQLiteESMFactory from "wa-sqlite/dist/wa-sqlite-async.mjs";
 import { Factory } from "wa-sqlite";
-import { IDBBatchAtomicVFS } from "wa-sqlite/src/examples/IDBBatchAtomicVFS.js";
 import { MemoryVFS } from "wa-sqlite/src/examples/MemoryVFS.js";
 import { seedMuscleGroups } from "./seed";
 
@@ -54,44 +53,110 @@ CREATE TABLE IF NOT EXISTS sets (
 );
 `;
 
+const STORAGE_KEY = "crucible-db-sql";
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-let _db: { sqlite3: any; db: number } | null = null;
+type DBInstance = { sqlite3: any; db: number };
+let _db: DBInstance | null = null;
+let _initPromise: Promise<DBInstance> | null = null;
 
-export async function getDB() {
+// ── DB access serialization ───────────────────────────────
+// wa-sqlite's async build has ONE connection. Two statements stepping
+// concurrently corrupt the pipeline ("not a statement" / wrong results).
+// Every query/run/save goes through this single promise chain so DB access
+// is strictly serialized, regardless of how many callers fire in parallel.
+let _dbLock: Promise<unknown> = Promise.resolve();
+export function withDbLock<T>(fn: () => Promise<T>): Promise<T> {
+  const result = _dbLock.then(fn, fn);
+  _dbLock = result.then(
+    () => undefined,
+    () => undefined
+  );
+  return result;
+}
+
+export async function getDB(): Promise<DBInstance> {
   if (_db) return _db;
+  if (_initPromise) return _initPromise;
+  _initPromise = _initDB();
+  return _initPromise;
+}
 
+async function _initDB(): Promise<DBInstance> {
   const module = await SQLiteESMFactory();
   const sqlite3 = Factory(module);
 
-  let db: number;
+  // MemoryVFS is a wa-sqlite example class whose xRead signature doesn't match
+  // the published SQLiteVFS type (known upstream typing gap). Cast through.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const vfs = new MemoryVFS() as any;
+  sqlite3.vfs_register(vfs, true);
+  const db = await sqlite3.open_v2("crucible.db");
 
-  try {
-    // IDBBatchAtomicVFS — persists to IndexedDB
-    // Note: journal "file not found" errors in console are expected and harmless.
-    // SQLite probes for the journal; CANTOPEN tells it no hot journal exists.
-    const vfs = new IDBBatchAtomicVFS("crucible-idb");
-    sqlite3.vfs_register(vfs, true);
-    db = await sqlite3.open_v2("crucible.db");
-    console.log("[Crucible DB] Using IndexedDB persistence (IDBBatchAtomicVFS)");
-  } catch (e) {
-    console.warn("[Crucible DB] IDB VFS failed, falling back to in-memory:", e);
-    try {
-      const vfs = new MemoryVFS();
-      sqlite3.vfs_register(vfs, true);
-      db = await sqlite3.open_v2("crucible.db");
-    } catch {
-      db = await sqlite3.open_v2("crucible.db");
-    }
-    console.warn("[Crucible DB] Using in-memory database (data will not persist)");
-  }
-
-  // Execute full schema in one call — avoid multiple sequential transactions
+  // Always run schema first (CREATE IF NOT EXISTS is safe)
   await sqlite3.exec(db, SCHEMA);
 
-  _db = { sqlite3, db };
+  // Try to restore data from localStorage
+  const sqlDump = localStorage.getItem(STORAGE_KEY);
+  if (sqlDump) {
+    try {
+      await sqlite3.exec(db, sqlDump);
+      console.log("[Crucible DB] Restored from localStorage");
+    } catch (e) {
+      console.warn("[Crucible DB] Restore failed, starting fresh:", e);
+    }
+  } else {
+    console.log("[Crucible DB] Fresh database");
+  }
 
-  // Seed data
-  await seedMuscleGroups(_db);
+  const instance: DBInstance = { sqlite3, db };
 
-  return _db;
+  // Seed muscle groups (INSERT OR IGNORE — safe to run on restored DB)
+  await seedMuscleGroups(instance);
+
+  _db = instance;
+  return instance;
+}
+
+/** Save all data to localStorage as SQL INSERT statements */
+export async function saveDB(): Promise<void> {
+  if (!_db) return;
+  const db = _db;
+
+  await withDbLock(async () => {
+    try {
+      const tables = ["muscle_groups", "exercises", "exercise_muscles", "sessions", "sets"];
+      const statements: string[] = [];
+
+      for (const table of tables) {
+        const rows: Record<string, unknown>[] = [];
+        await db.sqlite3.exec(
+          db.db,
+          `SELECT * FROM ${table}`,
+          (row: unknown[], columns: string[]) => {
+            const obj: Record<string, unknown> = {};
+            columns.forEach((col, i) => { obj[col] = row[i]; });
+            rows.push(obj);
+          }
+        );
+
+        for (const row of rows) {
+          const cols = Object.keys(row);
+          const vals = cols.map((c) => {
+            const v = row[c];
+            if (v === null || v === undefined) return "NULL";
+            if (typeof v === "number") return String(v);
+            return `'${String(v).replace(/'/g, "''")}'`;
+          });
+          statements.push(
+            `INSERT OR REPLACE INTO ${table} (${cols.join(",")}) VALUES (${vals.join(",")});`
+          );
+        }
+      }
+
+      localStorage.setItem(STORAGE_KEY, statements.join("\n"));
+    } catch (e) {
+      console.warn("[Crucible DB] Save failed:", e);
+    }
+  });
 }

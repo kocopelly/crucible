@@ -1,5 +1,5 @@
-import { createSignal, createEffect, For, Show, type Component } from "solid-js";
-import { useDb } from "../db/context";
+import { createSignal, onMount, For, Show, type Component } from "solid-js";
+import { getDB } from "../db/init";
 import {
   createSession,
   getActiveSession,
@@ -64,8 +64,9 @@ const SetRow: Component<{
   );
 };
 
+type DB = Awaited<ReturnType<typeof getDB>>;
+
 const Session: Component = () => {
-  const { db } = useDb();
   const [session, setSession] = createSignal<SessionType | null>(null);
   const [blocks, setBlocks] = createSignal<ExerciseBlock[]>([]);
   const [showPicker, setShowPicker] = createSignal(false);
@@ -73,13 +74,11 @@ const Session: Component = () => {
   const [loading, setLoading] = createSignal(true);
 
   // On mount: check for an active (unfinished) session and resume it
-  createEffect(() => {
-    const d = db();
-    if (!d) return;
-    resumeActiveSession(d);
+  onMount(() => {
+    getDB().then((d) => resumeActiveSession(d));
   });
 
-  const resumeActiveSession = async (d: NonNullable<ReturnType<typeof db>>) => {
+  const resumeActiveSession = async (d: DB) => {
     setLoading(true);
     try {
       const active = await getActiveSession(d);
@@ -93,7 +92,7 @@ const Session: Component = () => {
     }
   };
 
-  const loadSessionBlocks = async (d: NonNullable<ReturnType<typeof db>>, sessionId: string) => {
+  const loadSessionBlocks = async (d: DB, sessionId: string) => {
     const sets = await getSetsForSession(d, sessionId);
     // Group sets by exercise
     const exerciseMap = new Map<string, Set[]>();
@@ -118,8 +117,7 @@ const Session: Component = () => {
   };
 
   const startWorkout = async () => {
-    const d = db();
-    if (!d) return;
+    const d = await getDB();
     const today = new Date().toISOString().split("T")[0];
     const s = await createSession(d, today);
     setSession(s);
@@ -128,8 +126,7 @@ const Session: Component = () => {
   };
 
   const handleExerciseSelected = async (exercise: Exercise) => {
-    const d = db();
-    if (!d) return;
+    const d = await getDB();
     setShowPicker(false);
 
     const lastTime = await getLastSetsForExercise(d, exercise.id);
@@ -164,9 +161,9 @@ const Session: Component = () => {
   };
 
   const handleAddSet = async (blockIndex: number) => {
-    const d = db();
+    const d = await getDB();
     const s = session();
-    if (!d || !s) return;
+    if (!s) return;
 
     const block = blocks()[blockIndex];
     const nextOrder = block.sets.length + 1;
@@ -189,8 +186,7 @@ const Session: Component = () => {
   };
 
   const handleUpdateSet = async (blockIndex: number, setIndex: number, field: "weight" | "reps", value: number) => {
-    const d = db();
-    if (!d) return;
+    const d = await getDB();
 
     const set = blocks()[blockIndex].sets[setIndex];
     await updateSet(d, set.id, { [field]: value });
@@ -205,8 +201,7 @@ const Session: Component = () => {
   };
 
   const handleDeleteSet = async (blockIndex: number, setIndex: number) => {
-    const d = db();
-    if (!d) return;
+    const d = await getDB();
 
     const set = blocks()[blockIndex].sets[setIndex];
     await deleteSet(d, set.id);
@@ -220,9 +215,9 @@ const Session: Component = () => {
   };
 
   const handleFinishWorkout = async () => {
-    const d = db();
+    const d = await getDB();
     const s = session();
-    if (!d || !s) return;
+    if (!s) return;
 
     await finishSession(d, s.id);
     setFinished(true);
@@ -295,7 +290,7 @@ const Session: Component = () => {
                     <span class="flex-1">Weight</span>
                     <span class="shrink-0">&nbsp;</span>
                     <span class="flex-1">Reps</span>
-                    <span class="w-8 shrink-0"></span>
+                    <span class="w-8 shrink-0" />
                   </div>
 
                   <For each={block.sets}>

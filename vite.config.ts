@@ -42,6 +42,12 @@ export default defineConfig({
   build: {
     outDir: "dist",
   },
+  // wa-sqlite ships a .wasm that must be served as-is; Vite's dep optimizer
+  // rewrites the relative path and the dev server returns index.html instead,
+  // causing "expected magic word 00 61 73 6d, found 3c 21 44 4f" (<!DO...).
+  optimizeDeps: {
+    exclude: ["wa-sqlite"],
+  },
   server: {
     host: "0.0.0.0",
   },

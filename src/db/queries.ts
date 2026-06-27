@@ -1,7 +1,15 @@
 import type { MuscleGroup, Exercise, ExerciseMuscle, Session, Set } from "../lib/types";
+import { saveDB, withDbLock } from "./init";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type DB = { sqlite3: any; db: number };
+
+// Debounced save — batches rapid writes into one save
+let _saveTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleSave() {
+  if (_saveTimer) clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(() => { saveDB(); }, 300);
+}
 
 /** Run a SQL query and return rows as typed objects */
 async function query<T = Record<string, unknown>>(
@@ -9,26 +17,12 @@ async function query<T = Record<string, unknown>>(
   sql: string,
   params?: unknown[]
 ): Promise<T[]> {
-  const results: T[] = [];
-  if (params && params.length > 0) {
-    // Use prepared statement for parameterized queries
-    const str = db.sqlite3.str_new(db.db, sql);
-    const prepared = await db.sqlite3.prepare_v2(db.db, db.sqlite3.str_value(str));
-    if (prepared === null) {
-      db.sqlite3.str_finish(str);
-      return results;
-    }
-    const stmt = prepared.stmt;
-    try {
-      for (let i = 0; i < params.length; i++) {
-        const val = params[i];
-        if (val === null || val === undefined) {
-          db.sqlite3.bind(stmt, i + 1, null);
-        } else if (typeof val === "number") {
-          db.sqlite3.bind(stmt, i + 1, val);
-        } else {
-          db.sqlite3.bind(stmt, i + 1, String(val));
-        }
+  return withDbLock(async () => {
+    const results: T[] = [];
+    for await (const stmt of db.sqlite3.statements(db.db, sql)) {
+      if (params && params.length > 0) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        db.sqlite3.bind_collection(stmt, params as any);
       }
       const cols = db.sqlite3.column_names(stmt);
       while ((await db.sqlite3.step(stmt)) === 100 /* SQLITE_ROW */) {
@@ -38,52 +32,23 @@ async function query<T = Record<string, unknown>>(
         }
         results.push(obj as T);
       }
-    } finally {
-      await db.sqlite3.finalize(stmt);
-      db.sqlite3.str_finish(str);
     }
-  } else {
-    // Simple exec for non-parameterized queries
-    await db.sqlite3.exec(db.db, sql, (row: unknown[], columns: string[]) => {
-      const obj: Record<string, unknown> = {};
-      columns.forEach((col, i) => {
-        obj[col] = row[i];
-      });
-      results.push(obj as T);
-    });
-  }
-  return results;
+    return results;
+  });
 }
 
-/** Run a SQL statement (no results needed) */
+/** Run a SQL statement (no results needed). Auto-saves to localStorage. */
 async function run(db: DB, sql: string, params?: unknown[]): Promise<void> {
-  if (params && params.length > 0) {
-    const str = db.sqlite3.str_new(db.db, sql);
-    const prepared = await db.sqlite3.prepare_v2(db.db, db.sqlite3.str_value(str));
-    if (prepared === null) {
-      db.sqlite3.str_finish(str);
-      return;
-    }
-    const stmt = prepared.stmt;
-    try {
-      for (let i = 0; i < params.length; i++) {
-        const val = params[i];
-        if (val === null || val === undefined) {
-          db.sqlite3.bind(stmt, i + 1, null);
-        } else if (typeof val === "number") {
-          db.sqlite3.bind(stmt, i + 1, val);
-        } else {
-          db.sqlite3.bind(stmt, i + 1, String(val));
-        }
+  await withDbLock(async () => {
+    for await (const stmt of db.sqlite3.statements(db.db, sql)) {
+      if (params && params.length > 0) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        db.sqlite3.bind_collection(stmt, params as any);
       }
       await db.sqlite3.step(stmt);
-    } finally {
-      await db.sqlite3.finalize(stmt);
-      db.sqlite3.str_finish(str);
     }
-  } else {
-    await db.sqlite3.exec(db.db, sql);
-  }
+  });
+  scheduleSave();
 }
 
 // ── Sessions ──────────────────────────────────────────────
@@ -277,4 +242,162 @@ export async function getSessionExerciseCount(db: DB, sessionId: string): Promis
     [sessionId]
   );
   return rows[0]?.cnt ?? 0;
+}
+
+// ── Analytics ─────────────────────────────────────────────
+
+/** Get weekly muscle volume for the last N weeks.
+ *  Returns sets weighted by exercise_muscles mapping, rolled up through hierarchy. */
+export async function getWeeklyMuscleVolume(
+  db: DB,
+  weeks: number = 8
+): Promise<{ week: string; muscle: string; muscleId: string; sets: number }[]> {
+  // Calculate start date (N weeks ago, Monday)
+  const now = new Date();
+  const day = now.getDay();
+  const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+  const thisMonday = new Date(now);
+  thisMonday.setDate(diff);
+  thisMonday.setHours(0, 0, 0, 0);
+  const startDate = new Date(thisMonday);
+  startDate.setDate(startDate.getDate() - (weeks - 1) * 7);
+  const startStr = startDate.toISOString().split("T")[0];
+
+  // Get all sets with their muscle mappings since startDate
+  const rows = await query<{
+    week_start: string;
+    muscle_group_id: string;
+    weight: number;
+    set_count: number;
+  }>(
+    db,
+    `SELECT
+      -- Compute week start (Monday) from session date
+      date(s.date, 'weekday 1', '-7 days') as week_start,
+      em.muscle_group_id,
+      em.weight,
+      COUNT(st.id) as set_count
+    FROM sets st
+    JOIN sessions s ON s.id = st.session_id
+    JOIN exercise_muscles em ON em.exercise_id = st.exercise_id
+    WHERE s.date >= ? AND s.finished_at IS NOT NULL
+    GROUP BY week_start, em.muscle_group_id, em.weight`,
+    [startStr]
+  );
+
+  // Get muscle groups for name lookup and hierarchy rollup
+  const muscles = await getAllMuscleGroups(db);
+  const muscleMap = new Map(muscles.map((m) => [m.id, m]));
+
+  // Aggregate: weighted sets per muscle per week, with rollup to parents
+  const volumeMap = new Map<string, Map<string, number>>(); // week -> muscleId -> weighted sets
+
+  for (const row of rows) {
+    const week = row.week_start;
+    if (!volumeMap.has(week)) volumeMap.set(week, new Map());
+    const weekMap = volumeMap.get(week)!;
+
+    const weightedSets = row.set_count * row.weight;
+    const muscleId = row.muscle_group_id;
+
+    // Add to the specific muscle
+    weekMap.set(muscleId, (weekMap.get(muscleId) ?? 0) + weightedSets);
+
+    // Roll up to parent if exists
+    const muscle = muscleMap.get(muscleId);
+    if (muscle?.parent) {
+      weekMap.set(muscle.parent, (weekMap.get(muscle.parent) ?? 0) + weightedSets);
+    }
+  }
+
+  // Flatten to array
+  const result: { week: string; muscle: string; muscleId: string; sets: number }[] = [];
+  for (const [week, weekMap] of volumeMap) {
+    for (const [muscleId, sets] of weekMap) {
+      const muscle = muscleMap.get(muscleId);
+      if (muscle) {
+        result.push({ week, muscle: muscle.name, muscleId, sets: Math.round(sets * 10) / 10 });
+      }
+    }
+  }
+
+  return result.sort((a, b) => a.week.localeCompare(b.week) || a.muscle.localeCompare(b.muscle));
+}
+
+/** Get exercise history: all sets logged for an exercise, grouped by session */
+export async function getExerciseHistory(
+  db: DB,
+  exerciseId: string
+): Promise<{ session: Session; sets: Set[] }[]> {
+  const sessions = await query<Session>(
+    db,
+    `SELECT DISTINCT s.*
+     FROM sessions s
+     JOIN sets st ON st.session_id = s.id
+     WHERE st.exercise_id = ? AND s.finished_at IS NOT NULL
+     ORDER BY s.date DESC`,
+    [exerciseId]
+  );
+
+  const result: { session: Session; sets: Set[] }[] = [];
+  for (const session of sessions) {
+    const sets = await query<Set>(
+      db,
+      `SELECT * FROM sets WHERE session_id = ? AND exercise_id = ? ORDER BY set_order`,
+      [session.id, exerciseId]
+    );
+    result.push({ session, sets });
+  }
+  return result;
+}
+
+/** Get exercises that contribute to a muscle group (direct or via parent) */
+export async function getExercisesForMuscle(
+  db: DB,
+  muscleId: string
+): Promise<{ exercise: Exercise; weight: number }[]> {
+  // Get child muscle IDs too
+  const children = await query<{ id: string }>(
+    db,
+    `SELECT id FROM muscle_groups WHERE parent = ?`,
+    [muscleId]
+  );
+  const ids = [muscleId, ...children.map((c) => c.id)];
+  const placeholders = ids.map(() => "?").join(",");
+
+  const rows = await query<Exercise & { muscle_weight: number }>(
+    db,
+    `SELECT e.*, em.weight as muscle_weight
+     FROM exercises e
+     JOIN exercise_muscles em ON em.exercise_id = e.id
+     WHERE em.muscle_group_id IN (${placeholders})
+     ORDER BY em.weight DESC, e.display_name`,
+    ids
+  );
+
+  return rows.map((r) => ({
+    exercise: {
+      id: r.id, position: r.position, equipment: r.equipment,
+      target: r.target, angle: r.angle, movement: r.movement,
+      variant: r.variant, display_name: r.display_name,
+    },
+    weight: r.muscle_weight,
+  }));
+}
+
+/** Export all data as JSON */
+export async function exportAllData(db: DB): Promise<string> {
+  const sessions = await query<Session>(db, `SELECT * FROM sessions ORDER BY date DESC`);
+  const exercises = await query<Exercise>(db, `SELECT * FROM exercises ORDER BY display_name`);
+  const exerciseMuscles = await query<ExerciseMuscle>(db, `SELECT * FROM exercise_muscles`);
+  const sets = await query<Set>(db, `SELECT * FROM sets ORDER BY session_id, set_order`);
+
+  return JSON.stringify({
+    version: 1,
+    exported_at: new Date().toISOString(),
+    sessions,
+    exercises,
+    exercise_muscles: exerciseMuscles,
+    sets,
+  }, null, 2);
 }
